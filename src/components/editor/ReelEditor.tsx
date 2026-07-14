@@ -717,6 +717,10 @@ export const ReelEditor: React.FC<{
         flexDirection: "column",
         gap: 10,
         fontFamily: UI.font,
+        // Estira hasta el fondo del dock para que el Panel de Datos (flex:1)
+        // aproveche toda la altura; sin esto quedaba aire muerto debajo.
+        flex: 1,
+        minHeight: 0,
       }}
     >
       {header}
@@ -839,7 +843,15 @@ export const ReelEditor: React.FC<{
         pointerEvents: "auto",
       }}
     >
-      <div style={{flex: 1, overflowY: "auto", overflowX: "hidden"}}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
         {dockBody}
       </div>
     </div>

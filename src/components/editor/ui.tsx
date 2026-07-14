@@ -25,7 +25,6 @@ export const EditorStyles: React.FC = () => (
       background-clip: content-box;
     }
     [data-rne-dock-root] *::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.28); }
-    [data-rne-dock-root] * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent; }
   `}</style>
 );
 

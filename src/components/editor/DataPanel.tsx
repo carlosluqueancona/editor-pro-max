@@ -579,7 +579,16 @@ export const DataPanel: React.FC<{
   return (
     <div
       className="rne"
-      style={{width: "100%", pointerEvents: "auto"}}
+      // flex:1 + minHeight:0: el panel estira hasta el fondo del dock y la
+      // lista scrollea por dentro, en vez de dejar aire muerto debajo.
+      style={{
+        width: "100%",
+        pointerEvents: "auto",
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       <div
@@ -588,6 +597,8 @@ export const DataPanel: React.FC<{
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          flex: 1,
+          minHeight: 0,
         }}
       >
         {/* Cabecera con pestañas */}
@@ -661,7 +672,8 @@ export const DataPanel: React.FC<{
           style={{
             overflowY: "auto",
             overflowX: "hidden",
-            maxHeight: 620,
+            flex: 1,
+            minHeight: 0,
             padding: "8px 8px 12px",
             display: "flex",
             flexDirection: "column",

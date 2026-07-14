@@ -109,9 +109,23 @@ const useReservedDockSpace = (open: boolean) => {
   React.useEffect(() => {
     if (!open) return;
     const style = document.createElement("style");
-    style.textContent = `#__remotion-studio-container {width: calc(100vw - ${DOCK.width}px) !important;}`;
+    // position:relative ademas del ancho: el armazon interno de Studio es un
+    // div absolute cuyos ancestros son todos static, asi que sin esto resuelve
+    // su tamano contra el viewport completo e ignora la reserva.
+    // height explicita: al volverse relative, la altura del contenedor ya no
+    // la aporta el armazon absolute de dentro y colapsaria a 0.
+    style.textContent = `#__remotion-studio-container {position: relative !important; width: calc(100vw - ${DOCK.width}px) !important; height: 100vh !important;}`;
     document.head.appendChild(style);
-    return () => style.remove();
+    // Studio solo re-mide el canvas ante un resize de ventana (o al arrastrar
+    // sus splitters); un cambio de CSS no dispara nada y el preview queda
+    // descentrado, calculado con el ancho viejo. Se lo avisamos nosotros.
+    const nudge = () => window.dispatchEvent(new Event("resize"));
+    const raf = requestAnimationFrame(nudge);
+    return () => {
+      cancelAnimationFrame(raf);
+      style.remove();
+      requestAnimationFrame(nudge);
+    };
   }, [open]);
 };
 

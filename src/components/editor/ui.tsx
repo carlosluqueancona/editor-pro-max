@@ -14,6 +14,18 @@ export const EditorStyles: React.FC = () => (
     .rne-btn:active:not(:disabled) { transform: translateY(1.5px); }
     .rne-block { transition: filter .1s ease; }
     .rne-block:hover { filter: brightness(1.35); }
+    /* Scroll discreto dentro del dock: fino, oscuro y sin flechas, en vez
+       de la barra gris del sistema que rompia la estetica del panel. */
+    [data-rne-dock-root] *::-webkit-scrollbar { width: 8px; height: 8px; }
+    [data-rne-dock-root] *::-webkit-scrollbar-track { background: transparent; }
+    [data-rne-dock-root] *::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.14);
+      border-radius: 8px;
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+    [data-rne-dock-root] *::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.28); }
+    [data-rne-dock-root] * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent; }
   `}</style>
 );
 

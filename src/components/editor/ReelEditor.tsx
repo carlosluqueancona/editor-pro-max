@@ -98,6 +98,24 @@ const useStudioJsonPanelCollapsed = (enabled: boolean) => {
 };
 
 /**
+ * Studio centra el preview en el ancho total de la ventana sin saber que el
+ * dock existe (es un overlay fijo montado por portal), asi que en ventanas
+ * angostas el canvas se metia debajo del dock. Reservamos el ancho del dock
+ * en el contenedor raiz de Studio (#__remotion-studio-container, id estable
+ * de su index.html): el ResizeObserver del player detecta el cambio y
+ * re-encuadra el preview solo. Al colapsar el dock se devuelve el ancho.
+ */
+const useReservedDockSpace = (open: boolean) => {
+  React.useEffect(() => {
+    if (!open) return;
+    const style = document.createElement("style");
+    style.textContent = `#__remotion-studio-container {width: calc(100vw - ${DOCK.width}px) !important;}`;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, [open]);
+};
+
+/**
  * Un encuadre esta muerto si su rango es imposible (end <= start) o si ya no
  * toca ningun corte de su clip: no puede mandar sobre nada y solo estorba en
  * el JSON. Pasa, por ejemplo, al crear una entrada con el "+" del panel (nace
@@ -142,6 +160,7 @@ export const ReelEditor: React.FC<{
 
   useClicksReachTheCanvas(true);
   useStudioJsonPanelCollapsed(true);
+  useReservedDockSpace(dockOpen);
 
   // Contenedor del portal: un div propio colgado de <body>. El dock se dibuja
   // ahi, en pixeles de pantalla y fuera del canvas 9:16, para no tapar el

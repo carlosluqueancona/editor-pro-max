@@ -17,6 +17,7 @@ import {Btn, EditorStyles, Kbd, panelStyle} from "./ui";
 import {
   IcBroom,
   IcCursor,
+  IcFilm,
   IcKeyboard,
   IcRedo,
   IcScissors,
@@ -25,6 +26,7 @@ import {
 } from "./icons";
 import {Timeline} from "./Timeline";
 import {Inspector} from "./Inspector";
+import {DataPanel} from "./DataPanel";
 
 type Shot = ReelProps["prizeShots"][number];
 
@@ -98,6 +100,7 @@ export const ReelEditor: React.FC<{
 }> = ({cuts, shots, selected, onSelect}) => {
   const frame = useCurrentFrame();
   const [showKeys, setShowKeys] = React.useState(false);
+  const [showData, setShowData] = React.useState(false);
 
   useClicksReachTheCanvas(true);
 
@@ -240,6 +243,67 @@ export const ReelEditor: React.FC<{
     );
   };
 
+  // ------------------------------------ acciones corte por indice (DataPanel)
+  //
+  // El inspector opera siempre sobre el corte seleccionado; el Panel de Datos
+  // edita cualquier fila a la vez, asi que necesita variantes por indice. Todas
+  // pasan por `commit`, o sea que comparten el mismo undo/redo y autoguardado.
+
+  const setCutStartAt = (i: number, value: number) => {
+    const c = cuts[i];
+    if (!c) return;
+    const startSeconds = clamp(
+      Number(value.toFixed(2)),
+      0,
+      c.endSeconds - MIN_CUT_SECONDS,
+    );
+    const next = cuts.map((x, k) => (k === i ? {...x, startSeconds} : x));
+    commit({cuts: next}, {focus: i, seek: cutStartFrame(next, i)});
+  };
+
+  const setCutEndAt = (i: number, value: number) => {
+    const c = cuts[i];
+    if (!c) return;
+    const endSeconds = clamp(
+      Number(value.toFixed(2)),
+      c.startSeconds + MIN_CUT_SECONDS,
+      90,
+    );
+    const next = cuts.map((x, k) => (k === i ? {...x, endSeconds} : x));
+    commit(
+      {cuts: next},
+      {focus: i, seek: cutStartFrame(next, i) + cutFrames(next[i]) - 1},
+    );
+  };
+
+  const removeCutAt = (i: number) => {
+    const next = cuts.filter((_, k) => k !== i);
+    const focus = next.length === 0 ? null : Math.min(i, next.length - 1);
+    commit(
+      {cuts: next},
+      {focus, seek: focus === null ? null : cutStartFrame(next, focus)},
+    );
+  };
+
+  /**
+   * Anade un corte RELLENO, nunca vacio: duplica el seleccionado (o el ultimo)
+   * arrancando donde ese acaba y con 1 s de largo. Asi la fila nueva ya se ve
+   * en el video en vez de nacer en 0→0 sin material.
+   */
+  const addCut = () => {
+    const base = selected !== null ? cuts[selected] : cuts[cuts.length - 1];
+    const startSeconds = base ? Number(base.endSeconds.toFixed(2)) : 0;
+    const entry: Cut = {
+      clip: base ? base.clip : "assets/nebraska01.mp4",
+      startSeconds,
+      endSeconds: Number((startSeconds + 1).toFixed(2)),
+    };
+    const insertAt = selected !== null ? selected + 1 : cuts.length;
+    const next = [...cuts];
+    next.splice(insertAt, 0, entry);
+    commit({cuts: next}, {focus: insertAt, seek: cutStartFrame(next, insertAt)});
+  };
+
   // ------------------------------------------------------- acciones encuadre
 
   // `resolveShots` devuelve los objetos tal cual salen de `prizeShots`, asi
@@ -296,6 +360,31 @@ export const ReelEditor: React.FC<{
   const unpinShot = () => {
     if (shotIndex === -1) return;
     commit({prizeShots: shots.filter((_, i) => i !== shotIndex)});
+  };
+
+  // ---------------------------------- acciones encuadre por indice (DataPanel)
+
+  const setShotLabelAt = (i: number, label: string) => {
+    if (!shots[i]) return;
+    commit({prizeShots: shots.map((s, k) => (k === i ? {...s, label} : s))});
+  };
+
+  const setShotFieldAt = (
+    i: number,
+    field: "cx" | "start" | "end",
+    value: number,
+  ) => {
+    if (!shots[i]) return;
+    const v =
+      field === "cx"
+        ? clamp(Number(value.toFixed(2)), 0.16, 0.84)
+        : clamp(Number(value.toFixed(2)), 0, 90);
+    commit({prizeShots: shots.map((s, k) => (k === i ? {...s, [field]: v} : s))});
+  };
+
+  const removeShotAt = (i: number) => {
+    if (!shots[i]) return;
+    commit({prizeShots: shots.filter((_, k) => k !== i)});
   };
 
   // -------------------------------------------------------------- saneador
@@ -389,6 +478,32 @@ export const ReelEditor: React.FC<{
     return () =>
       window.removeEventListener("keydown", onKey, {capture: true});
   }, []);
+
+  // ------------------------------------------------ sincronia panel de Studio
+  //
+  // Cuando cambia el corte seleccionado, salta el panel de props de Studio a
+  // esa misma entrada (`cuts[i]`), asi el JSON crudo queda apuntando a lo que
+  // se esta editando aqui. Con debounce para no dispararlo en cada flecha, y
+  // NUNCA si el foco esta en un input (robaria el cursor mientras se escribe).
+  React.useEffect(() => {
+    if (selected === null || selected >= cuts.length) return;
+    const id = window.setTimeout(() => {
+      const a = document.activeElement as HTMLElement | null;
+      if (
+        a &&
+        (a.tagName === "INPUT" ||
+          a.tagName === "TEXTAREA" ||
+          a.isContentEditable)
+      ) {
+        return;
+      }
+      showInJson(["cuts", selected]);
+    }, 400);
+    return () => window.clearTimeout(id);
+    // Solo depende de la seleccion: seguir cuts aqui lo relanzaria en cada
+    // tecleo de un input y volveria a robar el foco.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   // ----------------------------------------------------------------- render
 
@@ -502,6 +617,14 @@ export const ReelEditor: React.FC<{
             icon={<IcRedo size={26} />}
           />
           <Btn
+            title="Panel de datos: tabla de cortes y encuadres"
+            active={showData}
+            onClick={() => setShowData((v) => !v)}
+            icon={<IcFilm size={26} />}
+          >
+            datos
+          </Btn>
+          <Btn
             square
             title="Atajos de teclado"
             active={showKeys}
@@ -609,6 +732,30 @@ export const ReelEditor: React.FC<{
             </div>
           </div>
         </div>
+      ) : null}
+
+      {showData ? (
+        <DataPanel
+          cuts={cuts}
+          shots={shots}
+          resolved={resolved}
+          selected={selected}
+          playing={playing}
+          onClose={() => setShowData(false)}
+          onSelectCut={selectCut}
+          onSetCutStart={setCutStartAt}
+          onSetCutEnd={setCutEndAt}
+          onRemoveCut={removeCutAt}
+          onAddCut={addCut}
+          onSetShotLabel={setShotLabelAt}
+          onSetShotCx={(i, v) => setShotFieldAt(i, "cx", v)}
+          onSetShotStart={(i, v) => setShotFieldAt(i, "start", v)}
+          onSetShotEnd={(i, v) => setShotFieldAt(i, "end", v)}
+          onRemoveShot={removeShotAt}
+          onShowShotJson={(i) => showInJson(["prizeShots", i])}
+          onAddShot={pinShot}
+          canAddShot={selected !== null}
+        />
       ) : null}
 
       <Timeline

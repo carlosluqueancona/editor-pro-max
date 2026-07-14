@@ -60,6 +60,42 @@ const useClicksReachTheCanvas = (enabled: boolean) => {
 };
 
 /**
+ * Con el editor encendido, el panel derecho de Studio ("Default Props", el
+ * JSON crudo) sobra: el Panel de Datos lo reemplaza. Studio no expone API para
+ * la barra, pero su boton de toggle es identificable por title, y el estado
+ * persiste solo en localStorage ("remotion.sidebarRightCollapsing"). Al montar
+ * la cerramos si esta abierta — con reintentos breves porque Studio la monta
+ * despues que nosotros. El usuario puede reabrirla cuando quiera con ⌘+J o el
+ * boton de la esquina superior derecha; no volvemos a pelear por ella.
+ */
+const useStudioJsonPanelCollapsed = (enabled: boolean) => {
+  React.useEffect(() => {
+    if (!enabled) return;
+    const collapse = () => {
+      const expanded =
+        window.localStorage.getItem("remotion.sidebarRightCollapsing") ===
+        "expanded";
+      if (!expanded) return true;
+      const btn = document.querySelector<HTMLElement>(
+        '[title^="Toggle Right Sidebar"]',
+      );
+      if (!btn) return false;
+      btn.click();
+      return true;
+    };
+    if (collapse()) return;
+    const timer = window.setInterval(() => {
+      if (collapse()) window.clearInterval(timer);
+    }, 400);
+    const stop = window.setTimeout(() => window.clearInterval(timer), 5000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(stop);
+    };
+  }, [enabled]);
+};
+
+/**
  * Un encuadre esta muerto si su rango es imposible (end <= start) o si ya no
  * toca ningun corte de su clip: no puede mandar sobre nada y solo estorba en
  * el JSON. Pasa, por ejemplo, al crear una entrada con el "+" del panel (nace
@@ -103,6 +139,7 @@ export const ReelEditor: React.FC<{
   const [showData, setShowData] = React.useState(false);
 
   useClicksReachTheCanvas(true);
+  useStudioJsonPanelCollapsed(true);
 
   // Historial de verdad: cada mutacion (cortes O encuadres) guarda la foto
   // completa, asi deshacer tambien revierte pins y limpiezas. `future` da el

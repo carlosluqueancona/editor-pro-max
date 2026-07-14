@@ -34,7 +34,7 @@ const NumField: React.FC<{
   width?: number;
   tone?: "default" | "accent";
   title?: string;
-}> = ({value, onCommit, step = 0.1, min, max, width = 92, tone = "default", title}) => {
+}> = ({value, onCommit, step = 0.1, min, max, width = 56, tone = "default", title}) => {
   const [text, setText] = React.useState(value.toFixed(2));
   const editing = React.useRef(false);
 
@@ -72,11 +72,11 @@ const NumField: React.FC<{
         border: "1px solid rgba(255,255,255,0.12)",
         background: "rgba(255,255,255,0.06)",
         color: UI.textDim,
-        width: 30,
-        height: 40,
-        borderRadius: 8,
+        width: 22,
+        height: 32,
+        borderRadius: 6,
         fontFamily: UI.mono,
-        fontSize: 24,
+        fontSize: 18,
         fontWeight: 700,
         lineHeight: 1,
         cursor: "pointer",
@@ -90,7 +90,7 @@ const NumField: React.FC<{
   return (
     <span
       title={title}
-      style={{display: "inline-flex", alignItems: "center", gap: 5}}
+      style={{display: "inline-flex", alignItems: "center", gap: 3}}
       onClick={(e) => e.stopPropagation()}
     >
       {stepBtn("−", -step)}
@@ -117,17 +117,17 @@ const NumField: React.FC<{
         }}
         style={{
           width,
-          height: 40,
+          height: 32,
           textAlign: "center",
           appearance: "none",
-          borderRadius: 8,
+          borderRadius: 6,
           border: `1px solid ${tone === "accent" ? UI.accent : "rgba(255,255,255,0.14)"}`,
           background: UI.bgInset,
           color: tone === "accent" ? UI.accent : UI.text,
           fontFamily: UI.mono,
-          fontSize: 21,
+          fontSize: 15,
           fontWeight: 700,
-          padding: "0 6px",
+          padding: "0 4px",
           outline: "none",
         }}
       />
@@ -172,16 +172,16 @@ const TextField: React.FC<{
       style={{
         flex: 1,
         minWidth: 0,
-        height: 40,
+        height: 32,
         appearance: "none",
-        borderRadius: 8,
+        borderRadius: 6,
         border: "1px solid rgba(255,255,255,0.14)",
         background: UI.bgInset,
         color: UI.text,
         fontFamily: UI.font,
-        fontSize: 20,
+        fontSize: 15,
         fontWeight: 600,
-        padding: "0 12px",
+        padding: "0 10px",
         outline: "none",
       }}
     />
@@ -230,9 +230,9 @@ const CutRow: React.FC<{
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 12,
-        padding: "8px 12px",
-        borderRadius: UI.radiusSm,
+        gap: 7,
+        padding: "6px 8px",
+        borderRadius: 9,
         cursor: "pointer",
         // La fila viva (bajo el playhead) se resalta EN VIVO: es la entrada que
         // corresponde a lo que se ve en el video en este instante.
@@ -251,10 +251,10 @@ const CutRow: React.FC<{
     >
       <div
         style={{
-          width: 34,
+          width: 26,
           flexShrink: 0,
           fontFamily: UI.mono,
-          fontSize: 22,
+          fontSize: 15,
           fontWeight: 700,
           color: selected || playing ? UI.accent : UI.text,
           textAlign: "right",
@@ -262,23 +262,23 @@ const CutRow: React.FC<{
       >
         {index + 1}
       </div>
-      <div style={{width: 150, flexShrink: 0}}>
-        <ClipChip src={cut.clip} size={17} />
+      <div style={{width: 92, flexShrink: 0, overflow: "hidden"}}>
+        <ClipChip src={cut.clip} size={12} />
       </div>
       <div style={{flexShrink: 0}}>
         <NumField value={cut.startSeconds} onCommit={onSetStart} min={0} title="Entrada (s del clip)" />
       </div>
-      <span style={{color: UI.textFaint, fontFamily: UI.mono, fontSize: 20}}>→</span>
+      <span style={{color: UI.textFaint, fontFamily: UI.mono, fontSize: 14}}>→</span>
       <div style={{flexShrink: 0}}>
         <NumField value={cut.endSeconds} onCommit={onSetEnd} title="Salida (s del clip)" />
       </div>
       <div
         style={{
-          width: 78,
+          width: 48,
           flexShrink: 0,
           textAlign: "center",
           fontFamily: UI.mono,
-          fontSize: 20,
+          fontSize: 14,
           fontWeight: 700,
           color: dur <= 0 ? UI.danger : UI.textDim,
         }}
@@ -291,7 +291,7 @@ const CutRow: React.FC<{
           minWidth: 0,
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: 6,
           overflow: "hidden",
         }}
       >
@@ -300,22 +300,24 @@ const CutRow: React.FC<{
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 7,
+              gap: 5,
               fontFamily: UI.font,
-              fontSize: 18,
+              fontSize: 13,
               color: UI.ok,
+              whiteSpace: "nowrap",
             }}
+            title="Rastreo de cara automático"
           >
-            <IcTarget size={19} /> rastreo auto
+            <IcTarget size={15} /> auto
           </span>
         ) : (
           <span
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 7,
+              gap: 5,
               fontFamily: UI.font,
-              fontSize: 18,
+              fontSize: 13,
               color: UI.accent,
               whiteSpace: "nowrap",
               overflow: "hidden",
@@ -323,7 +325,7 @@ const CutRow: React.FC<{
             }}
             title={shotLabel ?? ""}
           >
-            <IcPin size={18} />
+            <IcPin size={14} />
             <span style={{overflow: "hidden", textOverflow: "ellipsis"}}>
               {shotLabel || `encuadre ${shotIndex + 1}`}
             </span>
@@ -335,7 +337,7 @@ const CutRow: React.FC<{
         square
         title={`Borrar el corte ${index + 1}`}
         onClick={onRemove}
-        icon={<IcTrash size={20} />}
+        icon={<IcTrash size={16} />}
       />
     </div>
   );
@@ -371,9 +373,9 @@ const ShotRow: React.FC<{
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 10,
-        padding: "12px 14px",
-        borderRadius: UI.radiusSm,
+        gap: 8,
+        padding: "9px 10px",
+        borderRadius: 9,
         background: "rgba(255,255,255,0.035)",
         border: dead
           ? `2px solid ${UI.danger}66`
@@ -381,13 +383,13 @@ const ShotRow: React.FC<{
       }}
     >
       {/* Cabecera: nº, chip, nombre editable, estado */}
-      <div style={{display: "flex", alignItems: "center", gap: 12}}>
+      <div style={{display: "flex", alignItems: "center", gap: 8}}>
         <div
           style={{
-            width: 34,
+            width: 26,
             flexShrink: 0,
             fontFamily: UI.mono,
-            fontSize: 21,
+            fontSize: 15,
             fontWeight: 700,
             color: UI.textDim,
             textAlign: "right",
@@ -396,7 +398,7 @@ const ShotRow: React.FC<{
           {index + 1}
         </div>
         <div style={{flexShrink: 0}}>
-          <ClipChip src={shot.clip} size={17} />
+          <ClipChip src={shot.clip} size={12} />
         </div>
         <TextField value={shot.label} onCommit={onSetLabel} />
         {dead ? (
@@ -406,61 +408,61 @@ const ShotRow: React.FC<{
               alignItems: "center",
               gap: 7,
               flexShrink: 0,
-              padding: "6px 12px",
+              padding: "4px 9px",
               borderRadius: 999,
               background: "rgba(244,88,122,0.15)",
               border: `1px solid ${UI.danger}`,
               fontFamily: UI.font,
-              fontSize: 16,
+              fontSize: 13,
               fontWeight: 700,
               letterSpacing: 1,
               color: UI.danger,
             }}
             title="Este encuadre no gobierna ningún corte: no hace nada"
           >
-            <IcWarn size={18} /> MUERTO
+            <IcWarn size={15} /> MUERTO
           </span>
         ) : (
           <span
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
+              gap: 5,
               flexShrink: 0,
               fontFamily: UI.font,
-              fontSize: 17,
+              fontSize: 13,
               color: UI.ok,
               whiteSpace: "nowrap",
             }}
             title={`Gobierna los cortes: ${governs.map((i) => i + 1).join(", ")}`}
           >
-            <IcScissors size={17} /> corte {governs.map((i) => i + 1).join(", ")}
+            <IcScissors size={14} /> corte {governs.map((i) => i + 1).join(", ")}
           </span>
         )}
       </div>
 
       {/* Controles: cx / entrada / salida + acciones */}
-      <div style={{display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap"}}>
-        <span style={{display: "inline-flex", alignItems: "center", gap: 9}}>
-          <span style={{...sectionLabel, fontSize: 14}}>cx</span>
+      <div style={{display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap"}}>
+        <span style={{display: "inline-flex", alignItems: "center", gap: 6}}>
+          <span style={{...sectionLabel, fontSize: 12}}>cx</span>
           <NumField
             value={shot.cx}
             onCommit={onSetCx}
             step={0.02}
             min={0.16}
             max={0.84}
-            width={80}
+            width={54}
             tone="accent"
             title="Centro horizontal del recorte (0.16–0.84)"
           />
         </span>
-        <span style={{display: "inline-flex", alignItems: "center", gap: 9}}>
-          <span style={{...sectionLabel, fontSize: 14}}>entrada</span>
+        <span style={{display: "inline-flex", alignItems: "center", gap: 6}}>
+          <span style={{...sectionLabel, fontSize: 12}}>entrada</span>
           <NumField value={shot.start} onCommit={onSetStart} min={0} title="Segundo inicial del clip" />
         </span>
-        <span style={{color: UI.textFaint, fontFamily: UI.mono, fontSize: 20}}>→</span>
-        <span style={{display: "inline-flex", alignItems: "center", gap: 9}}>
-          <span style={{...sectionLabel, fontSize: 14}}>salida</span>
+        <span style={{color: UI.textFaint, fontFamily: UI.mono, fontSize: 14}}>→</span>
+        <span style={{display: "inline-flex", alignItems: "center", gap: 6}}>
+          <span style={{...sectionLabel, fontSize: 12}}>salida</span>
           <NumField value={shot.end} onCommit={onSetEnd} min={0} title="Segundo final del clip" />
         </span>
         <div style={{flex: 1}} />
@@ -492,7 +494,7 @@ export const DataPanel: React.FC<{
   resolved: (Shot | null)[];
   selected: number | null;
   playing: number | null;
-  onClose: () => void;
+  onClose?: () => void;
   onSelectCut: (i: number) => void;
   onSetCutStart: (i: number, v: number) => void;
   onSetCutEnd: (i: number, v: number) => void;
@@ -542,16 +544,17 @@ export const DataPanel: React.FC<{
           appearance: "none",
           display: "inline-flex",
           alignItems: "center",
-          gap: 10,
-          padding: "11px 20px",
-          borderRadius: UI.radiusSm,
+          gap: 6,
+          padding: "6px 11px",
+          borderRadius: 8,
           border: on ? `1px solid ${UI.accent}` : "1px solid transparent",
           background: on ? "rgba(236,158,179,0.14)" : "rgba(255,255,255,0.05)",
           color: on ? UI.accent : UI.textDim,
           fontFamily: UI.font,
-          fontSize: 22,
+          fontSize: 15,
           fontWeight: 700,
           cursor: "pointer",
+          whiteSpace: "nowrap",
         }}
       >
         {icon}
@@ -559,9 +562,9 @@ export const DataPanel: React.FC<{
         <span
           style={{
             fontFamily: UI.mono,
-            fontSize: 17,
+            fontSize: 12,
             fontWeight: 700,
-            padding: "2px 10px",
+            padding: "1px 7px",
             borderRadius: 999,
             background: on ? UI.accent : "rgba(255,255,255,0.1)",
             color: on ? UI.accentInk : UI.textDim,
@@ -576,13 +579,7 @@ export const DataPanel: React.FC<{
   return (
     <div
       className="rne"
-      style={{
-        position: "absolute",
-        left: 24,
-        right: 24,
-        bottom: 232,
-        pointerEvents: "auto",
-      }}
+      style={{width: "100%", pointerEvents: "auto"}}
       onClick={(e) => e.stopPropagation()}
     >
       <div
@@ -590,7 +587,6 @@ export const DataPanel: React.FC<{
           ...panelStyle,
           display: "flex",
           flexDirection: "column",
-          maxHeight: 900,
           overflow: "hidden",
         }}
       >
@@ -599,72 +595,77 @@ export const DataPanel: React.FC<{
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 12,
-            padding: "14px 18px",
+            gap: 8,
+            padding: "8px 10px",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          <span style={{color: UI.accent, display: "inline-flex"}}>
-            <IcFilm size={28} />
+          <span style={{color: UI.accent, display: "inline-flex", flexShrink: 0}}>
+            <IcFilm size={18} />
           </span>
           <span
             style={{
               fontFamily: UI.font,
-              fontSize: 23,
+              fontSize: 15,
               fontWeight: 800,
               letterSpacing: 0.5,
               color: UI.text,
-              marginRight: 8,
+              flexShrink: 0,
             }}
           >
-            PANEL DE DATOS
+            DATOS
           </span>
-          <TabBtn id="cortes" label="Cortes" count={p.cuts.length} icon={<IcScissors size={22} />} />
+          <TabBtn id="cortes" label="Cortes" count={p.cuts.length} icon={<IcScissors size={15} />} />
           <TabBtn
             id="encuadres"
             label="Encuadres"
             count={p.shots.length}
-            icon={<IcPin size={22} />}
+            icon={<IcPin size={15} />}
           />
           {deadCount > 0 ? (
             <span
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 8,
-                padding: "6px 14px",
+                gap: 5,
+                flexShrink: 0,
+                padding: "4px 9px",
                 borderRadius: 999,
                 background: "rgba(244,88,122,0.13)",
                 border: `1px solid ${UI.danger}66`,
                 fontFamily: UI.font,
-                fontSize: 17,
+                fontSize: 13,
                 fontWeight: 700,
                 color: UI.danger,
               }}
               title="Encuadres que no gobiernan ningún corte"
             >
-              <IcWarn size={18} /> {deadCount} muerto{deadCount > 1 ? "s" : ""}
+              <IcWarn size={15} /> {deadCount}
             </span>
           ) : null}
           <div style={{flex: 1}} />
-          <Btn
-            tone="ghost"
-            square
-            title="Cerrar el panel de datos"
-            onClick={p.onClose}
-            icon={<IcClose size={24} />}
-          />
+          {p.onClose ? (
+            <Btn
+              tone="ghost"
+              square
+              title="Cerrar el panel de datos"
+              onClick={p.onClose}
+              icon={<IcClose size={24} />}
+            />
+          ) : null}
         </div>
 
-        {/* Cuerpo con scroll interno: nunca tapa del todo el video. */}
+        {/* Cuerpo con scroll propio: la lista se desplaza sin mover el resto
+            del dock, y la tabla ancha se corre en horizontal si hace falta. */}
         <div
           style={{
             overflowY: "auto",
             overflowX: "hidden",
-            padding: "12px 14px 16px",
+            maxHeight: 620,
+            padding: "8px 8px 12px",
             display: "flex",
             flexDirection: "column",
-            gap: 8,
+            gap: 6,
           }}
         >
           {tab === "cortes" ? (
@@ -674,17 +675,17 @@ export const DataPanel: React.FC<{
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 12,
-                  padding: "0 12px 4px",
+                  gap: 7,
+                  padding: "0 8px 4px",
                 }}
               >
-                <HeadCell width={34}>Nº</HeadCell>
-                <HeadCell width={150}>Clip</HeadCell>
-                <HeadCell width={152}>Entrada</HeadCell>
+                <HeadCell width={26}>Nº</HeadCell>
+                <HeadCell width={92}>Clip</HeadCell>
+                <HeadCell width={106}>Entrada</HeadCell>
                 <span style={{width: 12}} />
-                <HeadCell width={152}>Salida</HeadCell>
-                <HeadCell width={78}>Dur.</HeadCell>
-                <HeadCell>Encuadre que lo gobierna</HeadCell>
+                <HeadCell width={106}>Salida</HeadCell>
+                <HeadCell width={48}>Dur.</HeadCell>
+                <HeadCell>Encuadre</HeadCell>
               </div>
               {p.cuts.map((cut, i) => {
                 const shot = p.resolved[i];

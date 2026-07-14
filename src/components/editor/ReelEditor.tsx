@@ -1,4 +1,5 @@
 import React from "react";
+import {createPortal} from "react-dom";
 import {AbsoluteFill, useCurrentFrame} from "remotion";
 import {
   bodyFrames,
@@ -12,12 +13,13 @@ import {
   type ReelProps,
 } from "../../compositions/RifaNebraskaReel";
 import {persistProps, seekTo, showInJson, syncJsonHighlight} from "./studio";
-import {sectionLabel, UI} from "./theme";
+import {DOCK, DOCK_VIRTUAL_W, sectionLabel, UI} from "./theme";
 import {Btn, EditorStyles, Kbd, panelStyle} from "./ui";
 import {
   IcBroom,
+  IcChevronL,
+  IcChevronR,
   IcCursor,
-  IcFilm,
   IcKeyboard,
   IcRedo,
   IcScissors,
@@ -136,10 +138,30 @@ export const ReelEditor: React.FC<{
 }> = ({cuts, shots, selected, onSelect}) => {
   const frame = useCurrentFrame();
   const [showKeys, setShowKeys] = React.useState(false);
-  const [showData, setShowData] = React.useState(false);
+  const [dockOpen, setDockOpen] = React.useState(true);
 
   useClicksReachTheCanvas(true);
   useStudioJsonPanelCollapsed(true);
+
+  // Contenedor del portal: un div propio colgado de <body>. El dock se dibuja
+  // ahi, en pixeles de pantalla y fuera del canvas 9:16, para no tapar el
+  // video. Al vivir en el mismo arbol de React (via createPortal) los contextos
+  // de Remotion siguen fluyendo: useCurrentFrame se actualiza en reproduccion.
+  // Se crea al montar y se elimina al desmontar, sin fugas en hot-reload.
+  const portalRef = React.useRef<HTMLDivElement | null>(null);
+  if (portalRef.current === null && typeof document !== "undefined") {
+    const el = document.createElement("div");
+    el.setAttribute("data-rne-dock-root", "");
+    portalRef.current = el;
+  }
+  React.useEffect(() => {
+    const el = portalRef.current;
+    if (!el) return;
+    document.body.appendChild(el);
+    return () => {
+      el.remove();
+    };
+  }, []);
 
   // Historial de verdad: cada mutacion (cortes O encuadres) guarda la foto
   // completa, asi deshacer tambien revierte pins y limpiezas. `future` da el
@@ -548,130 +570,124 @@ export const ReelEditor: React.FC<{
   const canUndo = past.current.length > 0;
   const canRedo = future.current.length > 0;
 
-  return (
-    <AbsoluteFill style={{pointerEvents: "none", fontFamily: UI.font}}>
-      <EditorStyles />
-
-      {/* Capa de seleccion: un clic en el video toma el corte que se ve. */}
-      <div
-        onClick={() => onSelect(playing)}
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "auto",
-          cursor: playing === null ? "default" : "pointer",
-        }}
-      />
-
-      {/* Barra superior */}
-      <div
-        className="rne"
-        style={{
-          position: "absolute",
-          top: 24,
-          left: 24,
-          right: 24,
-          pointerEvents: "auto",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          style={{
-            ...panelStyle,
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            padding: "13px 20px",
-          }}
-        >
-          <span style={{color: UI.accent}}>
-            <IcScissors size={30} />
-          </span>
-          <div style={{minWidth: 0}}>
-            <div
-              style={{
-                fontFamily: UI.font,
-                fontSize: 24,
-                fontWeight: 800,
-                letterSpacing: 1,
-                color: UI.text,
-              }}
-            >
-              EDITOR DE CORTES
-            </div>
-            <div
-              style={{fontFamily: UI.mono, fontSize: 17, color: UI.textDim}}
-            >
-              Rifa Nebraska · {cuts.length} cortes · {bodySeconds.toFixed(1)} s
-            </div>
-          </div>
-
-          <div style={{flex: 1}} />
-
-          {deadCount > 0 ? (
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "7px 10px 7px 16px",
-                borderRadius: 999,
-                background: "rgba(245,183,78,0.12)",
-                border: `1px solid rgba(245,183,78,0.45)`,
-              }}
-            >
-              <span style={{color: UI.warn, display: "inline-flex"}}>
-                <IcWarn size={23} />
-              </span>
-              <span
-                style={{fontFamily: UI.font, fontSize: 20, fontWeight: 600, color: UI.warn}}
-              >
-                {deadCount} encuadre{deadCount > 1 ? "s" : ""} muerto
-                {deadCount > 1 ? "s" : ""}
-              </span>
-              <Btn
-                title="Eliminar los encuadres que ya no tocan ningún corte"
-                onClick={cleanDeadShots}
-                icon={<IcBroom size={22} />}
-              >
-                limpiar
-              </Btn>
-            </span>
-          ) : null}
-
-          <Btn
-            square
-            title="Deshacer (Z)"
-            onClick={undo}
-            disabled={!canUndo}
-            icon={<IcUndo size={26} />}
-          />
-          <Btn
-            square
-            title="Rehacer (⇧Z)"
-            onClick={redo}
-            disabled={!canRedo}
-            icon={<IcRedo size={26} />}
-          />
-          <Btn
-            title="Panel de datos: tabla de cortes y encuadres"
-            active={showData}
-            onClick={() => setShowData((v) => !v)}
-            icon={<IcFilm size={26} />}
+  // Cabecera del dock: identidad, resumen, undo/redo, atajos, saneador y el
+  // boton que contrae el dock entero.
+  const header = (
+    <div
+      style={{
+        ...panelStyle,
+        display: "flex",
+        flexDirection: "column",
+        gap: 9,
+        padding: "10px 12px",
+      }}
+    >
+      <div style={{display: "flex", alignItems: "center", gap: 9}}>
+        <span style={{color: UI.accent, display: "inline-flex", flexShrink: 0}}>
+          <IcScissors size={22} />
+        </span>
+        <div style={{minWidth: 0, flex: 1}}>
+          <div
+            style={{
+              fontFamily: UI.font,
+              fontSize: 20,
+              fontWeight: 800,
+              letterSpacing: 1,
+              color: UI.text,
+            }}
           >
-            datos
-          </Btn>
-          <Btn
-            square
-            title="Atajos de teclado"
-            active={showKeys}
-            onClick={() => setShowKeys((v) => !v)}
-            icon={<IcKeyboard size={26} />}
-          />
+            EDITOR DE CORTES
+          </div>
+          <div style={{fontFamily: UI.mono, fontSize: 14, color: UI.textDim}}>
+            Rifa Nebraska · {cuts.length} cortes · {bodySeconds.toFixed(1)} s
+          </div>
         </div>
+        <Btn
+          square
+          title="Contraer el panel (deja el video libre)"
+          onClick={() => setDockOpen(false)}
+          icon={<IcChevronR size={22} />}
+        />
       </div>
 
-      {/* Inspector del corte seleccionado, o pista de uso. */}
+      <div style={{display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap"}}>
+        <Btn
+          square
+          title="Deshacer (Z)"
+          onClick={undo}
+          disabled={!canUndo}
+          icon={<IcUndo size={22} />}
+        />
+        <Btn
+          square
+          title="Rehacer (⇧Z)"
+          onClick={redo}
+          disabled={!canRedo}
+          icon={<IcRedo size={22} />}
+        />
+        <Btn
+          square
+          title="Atajos de teclado"
+          active={showKeys}
+          onClick={() => setShowKeys((v) => !v)}
+          icon={<IcKeyboard size={22} />}
+        />
+        <div style={{flex: 1}} />
+        {deadCount > 0 ? (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "4px 6px 4px 11px",
+              borderRadius: 999,
+              background: "rgba(245,183,78,0.12)",
+              border: `1px solid rgba(245,183,78,0.45)`,
+            }}
+          >
+            <span style={{color: UI.warn, display: "inline-flex"}}>
+              <IcWarn size={16} />
+            </span>
+            <span
+              style={{
+                fontFamily: UI.font,
+                fontSize: 13,
+                fontWeight: 600,
+                color: UI.warn,
+              }}
+            >
+              {deadCount} muerto{deadCount > 1 ? "s" : ""}
+            </span>
+            <Btn
+              title="Eliminar los encuadres que ya no tocan ningún corte"
+              onClick={cleanDeadShots}
+              icon={<IcBroom size={22} />}
+            >
+              limpiar
+            </Btn>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  // Contenido del dock, autorado en px "virtuales" y encogido por `zoom` a
+  // tamaños reales de pantalla (~12 px de fuente base) en el contenedor de
+  // abajo.
+  const dockBody = (
+    <div
+      style={{
+        zoom: DOCK.zoom,
+        width: DOCK_VIRTUAL_W,
+        padding: DOCK.pad,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        fontFamily: UI.font,
+      }}
+    >
+      {header}
+
       {cut !== null && selected !== null ? (
         <Inspector
           cut={cut}
@@ -700,101 +716,160 @@ export const ReelEditor: React.FC<{
         />
       ) : (
         <div
-          className="rne"
           style={{
-            position: "absolute",
-            top: 122,
-            left: 24,
-            right: 24,
+            ...panelStyle,
             display: "flex",
-            justifyContent: "center",
-            pointerEvents: "none",
+            alignItems: "center",
+            gap: 12,
+            padding: "16px 18px",
+            fontFamily: UI.font,
+            fontSize: 21,
+            color: UI.textDim,
           }}
         >
-          <span
-            style={{
-              ...panelStyle,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "12px 24px",
-              fontFamily: UI.font,
-              fontSize: 21,
-              color: UI.textDim,
-            }}
-          >
-            <span style={{color: UI.accent, display: "inline-flex"}}>
-              <IcCursor size={24} />
-            </span>
-            Haz clic en el video o en un bloque del timeline para seleccionar
-            un corte
+          <span style={{color: UI.accent, display: "inline-flex", flexShrink: 0}}>
+            <IcCursor size={24} />
           </span>
+          Haz clic en el video o en un bloque del timeline para seleccionar un
+          corte
         </div>
       )}
 
-      {/* Leyenda de atajos, colapsable desde la barra superior. */}
+      {/* Panel de Datos: siempre accesible, con su propio scroll. */}
+      <DataPanel
+        cuts={cuts}
+        shots={shots}
+        resolved={resolved}
+        selected={selected}
+        playing={playing}
+        onSelectCut={selectCut}
+        onSetCutStart={setCutStartAt}
+        onSetCutEnd={setCutEndAt}
+        onRemoveCut={removeCutAt}
+        onAddCut={addCut}
+        onSetShotLabel={setShotLabelAt}
+        onSetShotCx={(i, v) => setShotFieldAt(i, "cx", v)}
+        onSetShotStart={(i, v) => setShotFieldAt(i, "start", v)}
+        onSetShotEnd={(i, v) => setShotFieldAt(i, "end", v)}
+        onRemoveShot={removeShotAt}
+        onShowShotJson={(i) => showInJson(["prizeShots", i])}
+        onAddShot={pinShot}
+        canAddShot={selected !== null}
+      />
+
+      {/* Leyenda de atajos, colapsable desde la cabecera. */}
       {showKeys ? (
-        <div
-          className="rne"
-          style={{
-            position: "absolute",
-            right: 24,
-            bottom: 208,
-            pointerEvents: "auto",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{...panelStyle, padding: "16px 22px", minWidth: 460}}>
-            <div style={{...sectionLabel, marginBottom: 12}}>
-              Atajos de teclado
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr",
-                gap: "10px 18px",
-                alignItems: "center",
-              }}
-            >
-              {SHORTCUTS.map(([key, desc]) => (
-                <React.Fragment key={key}>
-                  <Kbd>{key}</Kbd>
-                  <span
-                    style={{fontFamily: UI.font, fontSize: 20, color: UI.textDim}}
-                  >
-                    {desc}
-                  </span>
-                </React.Fragment>
-              ))}
-            </div>
+        <div style={{...panelStyle, padding: "16px 20px"}}>
+          <div style={{...sectionLabel, marginBottom: 12}}>Atajos de teclado</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "auto 1fr",
+              gap: "10px 18px",
+              alignItems: "center",
+            }}
+          >
+            {SHORTCUTS.map(([key, desc]) => (
+              <React.Fragment key={key}>
+                <Kbd>{key}</Kbd>
+                <span
+                  style={{fontFamily: UI.font, fontSize: 20, color: UI.textDim}}
+                >
+                  {desc}
+                </span>
+              </React.Fragment>
+            ))}
           </div>
         </div>
       ) : null}
+    </div>
+  );
 
-      {showData ? (
-        <DataPanel
-          cuts={cuts}
-          shots={shots}
-          resolved={resolved}
-          selected={selected}
-          playing={playing}
-          onClose={() => setShowData(false)}
-          onSelectCut={selectCut}
-          onSetCutStart={setCutStartAt}
-          onSetCutEnd={setCutEndAt}
-          onRemoveCut={removeCutAt}
-          onAddCut={addCut}
-          onSetShotLabel={setShotLabelAt}
-          onSetShotCx={(i, v) => setShotFieldAt(i, "cx", v)}
-          onSetShotStart={(i, v) => setShotFieldAt(i, "start", v)}
-          onSetShotEnd={(i, v) => setShotFieldAt(i, "end", v)}
-          onRemoveShot={removeShotAt}
-          onShowShotJson={(i) => showInJson(["prizeShots", i])}
-          onAddShot={pinShot}
-          canAddShot={selected !== null}
-        />
-      ) : null}
+  const dock = dockOpen ? (
+    <div
+      className="rne"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        top: DOCK.top,
+        right: 0,
+        bottom: 0,
+        width: DOCK.width,
+        zIndex: DOCK.z,
+        display: "flex",
+        flexDirection: "column",
+        background: UI.bg,
+        borderLeft: UI.border,
+        boxShadow: "-24px 0 60px rgba(0,0,0,0.5)",
+        backdropFilter: "blur(8px)",
+        fontFamily: UI.font,
+        pointerEvents: "auto",
+      }}
+    >
+      <div style={{flex: 1, overflowY: "auto", overflowX: "hidden"}}>
+        {dockBody}
+      </div>
+    </div>
+  ) : (
+    // Pestañita para reabrir el dock: el video queda 100 % libre.
+    <button
+      type="button"
+      className="rne rne-btn"
+      title="Abrir el editor de cortes"
+      onClick={() => setDockOpen(true)}
+      style={{
+        position: "fixed",
+        top: DOCK.top + 18,
+        right: 0,
+        zIndex: DOCK.z,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 10,
+        padding: "16px 10px",
+        border: UI.border,
+        borderRight: "none",
+        borderRadius: "14px 0 0 14px",
+        background: UI.bg,
+        color: UI.accent,
+        cursor: "pointer",
+        boxShadow: UI.shadow,
+        pointerEvents: "auto",
+      }}
+    >
+      <IcChevronL size={22} />
+      <IcScissors size={22} />
+      <span
+        style={{
+          writingMode: "vertical-rl",
+          fontFamily: UI.font,
+          fontSize: 15,
+          fontWeight: 700,
+          letterSpacing: 2,
+          color: UI.textDim,
+        }}
+      >
+        EDITOR
+      </span>
+    </button>
+  );
 
+  return (
+    <AbsoluteFill style={{pointerEvents: "none", fontFamily: UI.font}}>
+      <EditorStyles />
+
+      {/* Capa de seleccion: un clic en el video toma el corte que se ve. */}
+      <div
+        onClick={() => onSelect(playing)}
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "auto",
+          cursor: playing === null ? "default" : "pointer",
+        }}
+      />
+
+      {/* En el canvas queda solo lo espacial: la tira delgada de cortes. */}
       <Timeline
         cuts={cuts}
         starts={starts}
@@ -805,6 +880,9 @@ export const ReelEditor: React.FC<{
         onSeek={(f) => seekTo(f)}
         onDeselect={() => onSelect(null)}
       />
+
+      {/* El resto de la UI vive en un dock fijo fuera del canvas (portal). */}
+      {portalRef.current ? createPortal(dock, portalRef.current) : null}
     </AbsoluteFill>
   );
 };

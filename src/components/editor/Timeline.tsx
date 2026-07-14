@@ -126,12 +126,13 @@ export const Timeline: React.FC<{
         left: 24,
         right: 24,
         bottom: 24,
+        opacity: 0.92,
         pointerEvents: "auto",
       }}
     >
-      <div style={{...panelStyle, padding: "16px 16px 12px"}}>
-        {/* Bloques */}
-        <div style={{display: "flex", gap: 4, height: 96, alignItems: "stretch"}}>
+      <div style={{...panelStyle, padding: "12px 14px 10px"}}>
+        {/* Bloques: tira delgada, solo lo espacial (seleccionar y saltar). */}
+        <div style={{display: "flex", gap: 4, height: 62, alignItems: "stretch"}}>
           <ZoneBlock
             label="INTRO"
             frames={INTRO_FRAMES}

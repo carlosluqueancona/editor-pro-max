@@ -32,6 +32,25 @@ export const UI = {
   shadow: "0 20px 60px rgba(0, 0, 0, 0.55)",
 } as const;
 
+/**
+ * Dock lateral derecho. Los paneles del editor se dibujan a "escala de lienzo"
+ * (fuentes de 20-30 px pensadas para un canvas de 1080 que Studio reduce). En
+ * el portal se renderizan 1:1 en pixeles de pantalla, asi que los encogemos en
+ * bloque con `zoom`: el contenido se autora a `virtualWidth` px y sale a
+ * `width` px reales, con la tipografia base cayendo a ~12 px. Un solo factor
+ * conserva intactas todas las proporciones del design system.
+ */
+export const DOCK = {
+  width: 404, // ancho real en pantalla
+  zoom: 0.6, // 20 px de fuente -> 12 px reales
+  top: 44, // arranca debajo de la barra de menus de Studio
+  pad: 13, // margen interno, en px de lienzo (virtuales)
+  z: 2000000, // por encima del preview y de los overlays de Studio
+} as const;
+
+/** Ancho en px "virtuales" al que se autora el contenido antes del zoom. */
+export const DOCK_VIRTUAL_W = Math.round(DOCK.width / DOCK.zoom); // ~673
+
 /** Etiqueta gris de seccion (INICIO, FIN, ENCUADRE...). */
 export const sectionLabel: CSSProperties = {
   fontFamily: UI.font,

@@ -38,15 +38,15 @@ const Stat: React.FC<{label: string; children: React.ReactNode}> = ({
       minWidth: 0,
       background: UI.bgRaised,
       border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: UI.radiusSm,
-      padding: "10px 16px",
+      borderRadius: 9,
+      padding: "7px 11px",
     }}
   >
-    <div style={{...sectionLabel, fontSize: 15, marginBottom: 2}}>{label}</div>
+    <div style={{...sectionLabel, fontSize: 12, marginBottom: 2}}>{label}</div>
     <div
       style={{
         fontFamily: UI.mono,
-        fontSize: 25,
+        fontSize: 18,
         fontWeight: 700,
         color: UI.text,
         whiteSpace: "nowrap",
@@ -109,8 +109,8 @@ const FramingStrip: React.FC<{
       }
       style={{
         position: "relative",
-        height: 128,
-        borderRadius: UI.radiusSm,
+        height: 104,
+        borderRadius: 9,
         background: UI.bgInset,
         border: "1px solid rgba(255,255,255,0.1)",
         overflow: "hidden",
@@ -222,9 +222,9 @@ const Group: React.FC<{label: string; children: React.ReactNode}> = ({
   label,
   children,
 }) => (
-  <div style={{display: "flex", flexDirection: "column", gap: 7}}>
-    <span style={{...sectionLabel, fontSize: 15}}>{label}</span>
-    <div style={{display: "flex", gap: 8}}>{children}</div>
+  <div style={{display: "flex", flexDirection: "column", gap: 5}}>
+    <span style={{...sectionLabel, fontSize: 12}}>{label}</span>
+    <div style={{display: "flex", gap: 6}}>{children}</div>
   </div>
 );
 
@@ -261,29 +261,23 @@ export const Inspector: React.FC<{
   return (
     <div
       className="rne"
-      style={{
-        position: "absolute",
-        top: 122,
-        left: 24,
-        right: 24,
-        pointerEvents: "auto",
-      }}
+      style={{width: "100%", pointerEvents: "auto"}}
       onClick={(e) => e.stopPropagation()}
     >
-      <div style={{...panelStyle, padding: "18px 22px 22px"}}>
+      <div style={{...panelStyle, padding: "12px 14px 14px"}}>
         {/* Cabecera del corte */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 16,
-            marginBottom: 14,
+            gap: 10,
+            marginBottom: 10,
           }}
         >
           <span
             style={{
               fontFamily: UI.font,
-              fontSize: 30,
+              fontSize: 21,
               fontWeight: 800,
               color: UI.text,
               letterSpacing: 0.5,
@@ -300,7 +294,7 @@ export const Inspector: React.FC<{
         </div>
 
         {/* Datos del corte */}
-        <div style={{display: "flex", gap: 10, marginBottom: 18}}>
+        <div style={{display: "flex", gap: 8, marginBottom: 12}}>
           <Stat label="Entrada → salida">
             {cut.startSeconds.toFixed(2)}
             <span style={{color: UI.textFaint}}> → </span>
@@ -319,26 +313,26 @@ export const Inspector: React.FC<{
         </div>
 
         {/* Encuadre */}
-        <div style={{...sectionLabel, marginBottom: 8}}>Encuadre</div>
+        <div style={{...sectionLabel, fontSize: 12, marginBottom: 6}}>Encuadre</div>
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 10,
-            marginBottom: 10,
+            gap: 8,
+            marginBottom: 8,
             fontFamily: UI.font,
-            fontSize: 21,
+            fontSize: 14,
           }}
         >
           {shot ? (
             <>
-              <span style={{color: UI.accent, fontWeight: 700}}>
-                <IcPin size={22} />
+              <span style={{color: UI.accent, fontWeight: 700, display: "inline-flex"}}>
+                <IcPin size={16} />
               </span>
-              <span style={{color: UI.text, fontWeight: 600}}>
+              <span style={{color: UI.text, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"}}>
                 {shot.label || "(sin nombre)"}
               </span>
-              <span style={{fontFamily: UI.mono, fontSize: 18, color: UI.textFaint}}>
+              <span style={{fontFamily: UI.mono, fontSize: 12, color: UI.textFaint, flexShrink: 0}}>
                 prizeShots[{p.shotIndex}] · cx {shot.cx.toFixed(2)}
               </span>
             </>
@@ -356,7 +350,7 @@ export const Inspector: React.FC<{
           onCommitCx={p.onSetShotCx}
         />
 
-        <div style={{display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12}}>
+        <div style={{display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10}}>
           {shot ? (
             <>
               <Btn
@@ -413,9 +407,9 @@ export const Inspector: React.FC<{
           style={{
             display: "flex",
             flexWrap: "wrap",
-            gap: 18,
-            marginTop: 20,
-            paddingTop: 18,
+            gap: 12,
+            marginTop: 14,
+            paddingTop: 12,
             borderTop: "1px solid rgba(255,255,255,0.08)",
           }}
         >

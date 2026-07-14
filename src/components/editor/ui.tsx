@@ -65,13 +65,13 @@ export const Btn: React.FC<{
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        gap: 10,
+        gap: 7,
         appearance: "none",
         border: active ? `1px solid ${UI.accent}` : palette.border,
-        borderRadius: UI.radiusSm,
-        padding: square ? 13 : "13px 20px",
+        borderRadius: 9,
+        padding: square ? 8 : "8px 13px",
         fontFamily: UI.font,
-        fontSize: 23,
+        fontSize: 17,
         fontWeight: 600,
         letterSpacing: 0.2,
         lineHeight: 1.2,
@@ -92,10 +92,10 @@ export const Kbd: React.FC<{children: React.ReactNode}> = ({children}) => (
   <span
     style={{
       fontFamily: UI.mono,
-      fontSize: 20,
+      fontSize: 15,
       fontWeight: 700,
-      padding: "4px 12px",
-      borderRadius: 8,
+      padding: "3px 9px",
+      borderRadius: 7,
       background: "rgba(255,255,255,0.08)",
       border: "1px solid rgba(255,255,255,0.16)",
       borderBottomWidth: 3,
@@ -108,15 +108,15 @@ export const Kbd: React.FC<{children: React.ReactNode}> = ({children}) => (
 );
 
 /** Ficha de clip: punto de color + nombre corto. */
-export const ClipChip: React.FC<{src: string; size?: number}> = ({src, size = 21}) => {
+export const ClipChip: React.FC<{src: string; size?: number}> = ({src, size = 14}) => {
   const meta = clipMeta(src);
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 9,
-        padding: "6px 14px",
+        gap: 6,
+        padding: "3px 9px",
         borderRadius: 999,
         background: meta.soft,
         border: `1px solid ${meta.color}55`,
@@ -129,8 +129,8 @@ export const ClipChip: React.FC<{src: string; size?: number}> = ({src, size = 21
     >
       <span
         style={{
-          width: 11,
-          height: 11,
+          width: 8,
+          height: 8,
           borderRadius: 999,
           background: meta.color,
           flexShrink: 0,

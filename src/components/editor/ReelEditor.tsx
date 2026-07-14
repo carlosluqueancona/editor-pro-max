@@ -11,7 +11,7 @@ import {
   type Cut,
   type ReelProps,
 } from "../../compositions/RifaNebraskaReel";
-import {persistProps, seekTo, showInJson} from "./studio";
+import {persistProps, seekTo, showInJson, syncJsonHighlight} from "./studio";
 import {sectionLabel, UI} from "./theme";
 import {Btn, EditorStyles, Kbd, panelStyle} from "./ui";
 import {
@@ -534,7 +534,7 @@ export const ReelEditor: React.FC<{
       ) {
         return;
       }
-      showInJson(["cuts", selected]);
+      syncJsonHighlight(["cuts", selected]);
     }, 400);
     return () => window.clearTimeout(id);
     // Solo depende de la seleccion: seguir cuts aqui lo relanzaria en cada

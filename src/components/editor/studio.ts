@@ -21,8 +21,29 @@ export const seekTo = async (frame: number) => {
   seek(frame);
 };
 
-/** Abre y resalta esa entrada exacta en el panel de props de Studio. */
-export const showInJson = async (path: (string | number)[]) => {
+/**
+ * Resalta esa entrada en el panel de props de Studio SI esta visible.
+ * focusDefaultPropsPath opera sobre el DOM: con la barra derecha cerrada
+ * (el editor la colapsa al montar) no encuentra nada y devuelve
+ * success:false sin efectos. Ideal para la sincronia pasiva de la seleccion,
+ * que no debe reabrir el panel.
+ */
+export const syncJsonHighlight = async (path: (string | number)[]) => {
   const {focusDefaultPropsPath} = await studio();
-  focusDefaultPropsPath({path});
+  return focusDefaultPropsPath({path}).success;
+};
+
+/**
+ * Accion explicita "ver en JSON": si la barra derecha esta cerrada, la abre
+ * con su boton de toggle y reintenta el resaltado hasta que el panel monte.
+ */
+export const showInJson = async (path: (string | number)[]) => {
+  if (await syncJsonHighlight(path)) return;
+  document
+    .querySelector<HTMLElement>('[title^="Toggle Right Sidebar"]')
+    ?.click();
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    if (await syncJsonHighlight(path)) return;
+  }
 };

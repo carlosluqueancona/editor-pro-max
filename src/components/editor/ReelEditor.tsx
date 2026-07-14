@@ -1,0 +1,626 @@
+import React from "react";
+import {AbsoluteFill, useCurrentFrame} from "remotion";
+import {
+  bodyFrames,
+  clipOf,
+  cutFrames,
+  cutStartFrame,
+  faceAt,
+  REEL_FPS,
+  resolveShots,
+  type Cut,
+  type ReelProps,
+} from "../../compositions/RifaNebraskaReel";
+import {persistProps, seekTo, showInJson} from "./studio";
+import {sectionLabel, UI} from "./theme";
+import {Btn, EditorStyles, Kbd, panelStyle} from "./ui";
+import {
+  IcBroom,
+  IcCursor,
+  IcKeyboard,
+  IcRedo,
+  IcScissors,
+  IcUndo,
+  IcWarn,
+} from "./icons";
+import {Timeline} from "./Timeline";
+import {Inspector} from "./Inspector";
+
+type Shot = ReelProps["prizeShots"][number];
+
+/** Ningun corte baja de aqui: mas corto y el ojo no alcanza a asentarse. */
+const MIN_CUT_SECONDS = 0.3;
+/** Lo que mueve cada clic en los botones de recorte. */
+const NUDGE_SECONDS = 0.1;
+
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.max(lo, Math.min(hi, v));
+
+/**
+ * Studio dibuja encima del preview una capa de contornos (los recuadros azules
+ * que resaltan el elemento bajo el cursor) con `pointer-events: all`. Vive
+ * fuera de la composicion, asi que ningun z-index nuestro la gana: se traga
+ * todos los clics y el editor parece muerto.
+ *
+ * Mientras el editor esta encendido le quitamos los eventos a esa capa — es lo
+ * mismo que hace el boton "Hide outlines" de la barra, pero sin que tengas que
+ * acordarte de darle. Se revierte solo al apagar el editor.
+ */
+const useClicksReachTheCanvas = (enabled: boolean) => {
+  React.useEffect(() => {
+    if (!enabled) return;
+    const style = document.createElement("style");
+    style.textContent =
+      'svg[aria-hidden="true"] polygon {pointer-events: none !important}';
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, [enabled]);
+};
+
+/**
+ * Un encuadre esta muerto si su rango es imposible (end <= start) o si ya no
+ * toca ningun corte de su clip: no puede mandar sobre nada y solo estorba en
+ * el JSON. Pasa, por ejemplo, al crear una entrada con el "+" del panel (nace
+ * con start y end en 0) o al borrar el corte que encuadraba.
+ */
+const isDeadShot = (s: Shot, cuts: Cut[]) =>
+  s.end <= s.start ||
+  !cuts.some(
+    (c) =>
+      c.clip === s.clip &&
+      Math.min(s.end, c.endSeconds) - Math.max(s.start, c.startSeconds) > 0,
+  );
+
+const SHORTCUTS: Array<[string, string]> = [
+  ["← →", "corte anterior / siguiente"],
+  ["S", "dividir en el playhead"],
+  ["⌫", "borrar el corte"],
+  ["[  ]", "recortar inicio / fin 0.1 s"],
+  ["Z", "deshacer"],
+  ["⇧ Z", "rehacer"],
+  ["Esc", "quitar selección"],
+];
+
+/**
+ * Editor de cortes dentro del propio preview, con timeline, inspector y
+ * editor de encuadres. Cada boton reescribe los props de Root.tsx con
+ * saveDefaultProps(), la misma via por la que Studio guarda los sliders: no
+ * hay estado paralelo que se pueda desincronizar del archivo.
+ *
+ * Solo se monta en Studio (`getRemotionEnvironment().isStudio`), asi que no
+ * hay manera de que se cuele en un render aunque dejes el prop encendido.
+ */
+export const ReelEditor: React.FC<{
+  cuts: Cut[];
+  shots: ReelProps["prizeShots"];
+  selected: number | null;
+  onSelect: (i: number | null) => void;
+}> = ({cuts, shots, selected, onSelect}) => {
+  const frame = useCurrentFrame();
+  const [showKeys, setShowKeys] = React.useState(false);
+
+  useClicksReachTheCanvas(true);
+
+  // Historial de verdad: cada mutacion (cortes O encuadres) guarda la foto
+  // completa, asi deshacer tambien revierte pins y limpiezas. `future` da el
+  // rehacer; se vacia en cuanto llega un cambio nuevo.
+  type Snapshot = {cuts: Cut[]; prizeShots: Shot[]};
+  const past = React.useRef<Snapshot[]>([]);
+  const future = React.useRef<Snapshot[]>([]);
+
+  const starts = React.useMemo(
+    () => cuts.map((_, i) => cutStartFrame(cuts, i)),
+    [cuts],
+  );
+  const resolved = React.useMemo(() => resolveShots(cuts, shots), [cuts, shots]);
+
+  /** El corte bajo el cursor de reproduccion; null en la entrada o la salida. */
+  const playing = React.useMemo(() => {
+    const i = starts.findIndex(
+      (s, k) => frame >= s && frame < s + cutFrames(cuts[k]),
+    );
+    return i === -1 ? null : i;
+  }, [starts, cuts, frame]);
+
+  const commit = React.useCallback(
+    (
+      patch: Partial<Snapshot>,
+      opts: {focus?: number | null; seek?: number | null} = {},
+    ) => {
+      past.current.push({cuts, prizeShots: shots});
+      future.current = [];
+      persistProps(patch);
+      if (opts.focus !== undefined) onSelect(opts.focus);
+      if (opts.seek !== undefined && opts.seek !== null) seekTo(opts.seek);
+    },
+    [cuts, shots, onSelect],
+  );
+
+  const undo = React.useCallback(() => {
+    const prev = past.current.pop();
+    if (!prev) return;
+    future.current.push({cuts, prizeShots: shots});
+    persistProps(prev);
+    if (selected !== null && selected >= prev.cuts.length) {
+      onSelect(prev.cuts.length > 0 ? prev.cuts.length - 1 : null);
+    }
+  }, [cuts, shots, selected, onSelect]);
+
+  const redo = React.useCallback(() => {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push({cuts, prizeShots: shots});
+    persistProps(next);
+    if (selected !== null && selected >= next.cuts.length) {
+      onSelect(next.cuts.length > 0 ? next.cuts.length - 1 : null);
+    }
+  }, [cuts, shots, selected, onSelect]);
+
+  const cut = selected === null ? null : cuts[selected];
+
+  // Cuadro del reel en que estas parado dentro del corte seleccionado, si es
+  // que el cursor esta dentro de el. Es lo que permite partirlo por aqui.
+  const insideSelected = selected !== null && playing === selected;
+  const sourceT =
+    cut && insideSelected
+      ? cut.startSeconds + (frame - starts[selected as number]) / REEL_FPS
+      : null;
+
+  // ---------------------------------------------------------- acciones corte
+
+  const selectCut = (i: number) => {
+    onSelect(i);
+    seekTo(starts[i]);
+  };
+
+  const trimStart = (d: number) => {
+    if (selected === null || !cut) return;
+    const startSeconds = clamp(
+      Number((cut.startSeconds + d).toFixed(2)),
+      0,
+      cut.endSeconds - MIN_CUT_SECONDS,
+    );
+    const next = cuts.map((c, i) =>
+      i === selected ? {...c, startSeconds} : c,
+    );
+    commit({cuts: next}, {focus: selected, seek: cutStartFrame(next, selected)});
+  };
+
+  const trimEnd = (d: number) => {
+    if (selected === null || !cut) return;
+    const endSeconds = Math.max(
+      cut.startSeconds + MIN_CUT_SECONDS,
+      Number((cut.endSeconds + d).toFixed(2)),
+    );
+    const next = cuts.map((c, i) => (i === selected ? {...c, endSeconds} : c));
+    // Salta al ultimo cuadro del corte: es donde se aprecia el nuevo fin.
+    commit(
+      {cuts: next},
+      {
+        focus: selected,
+        seek: cutStartFrame(next, selected) + cutFrames(next[selected]) - 1,
+      },
+    );
+  };
+
+  const canSplit =
+    cut !== null &&
+    sourceT !== null &&
+    sourceT - cut.startSeconds >= MIN_CUT_SECONDS &&
+    cut.endSeconds - sourceT >= MIN_CUT_SECONDS;
+
+  const split = () => {
+    if (selected === null || !cut || sourceT === null || !canSplit) return;
+    const left = {...cut, endSeconds: Number(sourceT.toFixed(2))};
+    const right = {...cut, startSeconds: Number(sourceT.toFixed(2))};
+    const next = [...cuts];
+    next.splice(selected, 1, left, right);
+    // Sin seek: el playhead ya esta exactamente en el punto de corte.
+    commit({cuts: next}, {focus: selected});
+  };
+
+  const move = (d: -1 | 1) => {
+    if (selected === null) return;
+    const to = selected + d;
+    if (to < 0 || to >= cuts.length) return;
+    const next = [...cuts];
+    [next[selected], next[to]] = [next[to], next[selected]];
+    commit({cuts: next}, {focus: to, seek: cutStartFrame(next, to)});
+  };
+
+  const removeCut = () => {
+    if (selected === null) return;
+    const next = cuts.filter((_, i) => i !== selected);
+    // Deja seleccionado el corte que ocupa ahora ese hueco, para poder ir
+    // borrando en cadena sin tener que volver a apuntar.
+    const focus = next.length === 0 ? null : Math.min(selected, next.length - 1);
+    commit(
+      {cuts: next},
+      {focus, seek: focus === null ? null : cutStartFrame(next, focus)},
+    );
+  };
+
+  // ------------------------------------------------------- acciones encuadre
+
+  // `resolveShots` devuelve los objetos tal cual salen de `prizeShots`, asi
+  // que indexOf da la posicion real en el array: es la ruta que necesita el
+  // panel de Studio para resaltar la entrada correcta.
+  const shot = selected === null ? null : resolved[selected];
+  const shotIndex = shot === null ? -1 : shots.indexOf(shot);
+
+  // El punto de referencia para "donde esta la cara": el playhead si esta
+  // dentro del corte, o el punto medio si no.
+  const refT =
+    cut === null
+      ? 0
+      : sourceT ?? (cut.startSeconds + cut.endSeconds) / 2;
+  const faceCx = cut === null ? 0.5 : faceAt(clipOf(cut), refT);
+
+  /**
+   * Fija el encuadre de este corte. Nace ya relleno con el clip y los segundos
+   * del corte, y con el cx donde esta la cara a mitad de la toma: si lo creas
+   * desde el panel de Studio con el boton "+" salen `start` y `end` en 0, la
+   * entrada no cubre nada y no hace absolutamente nada, sin avisar de por que.
+   *
+   * Un corte con encuadre fijo deja de perseguir la cara, que es justo lo que
+   * quita el balanceo cuando el rastreo viene nervioso.
+   */
+  const pinShot = () => {
+    if (selected === null || !cut) return;
+    const middle = (cut.startSeconds + cut.endSeconds) / 2;
+    const cx = clamp(Number(faceAt(clipOf(cut), middle).toFixed(2)), 0.16, 0.84);
+    const next = [
+      ...shots,
+      {
+        label: `${cut.clip.replace("assets/", "").replace(".mp4", "")} · corte ${selected + 1}`,
+        clip: cut.clip,
+        cx,
+        start: cut.startSeconds,
+        end: cut.endSeconds,
+      },
+    ];
+    commit({prizeShots: next});
+    showInJson(["prizeShots", next.length - 1]);
+  };
+
+  const setShotCx = (cx: number) => {
+    if (shotIndex === -1) return;
+    const next = shots.map((s, i) =>
+      i === shotIndex
+        ? {...s, cx: clamp(Number(cx.toFixed(2)), 0.16, 0.84)}
+        : s,
+    );
+    commit({prizeShots: next});
+  };
+
+  const unpinShot = () => {
+    if (shotIndex === -1) return;
+    commit({prizeShots: shots.filter((_, i) => i !== shotIndex)});
+  };
+
+  // -------------------------------------------------------------- saneador
+
+  const deadCount = React.useMemo(
+    () => shots.reduce((n, s) => n + (isDeadShot(s, cuts) ? 1 : 0), 0),
+    [shots, cuts],
+  );
+
+  const cleanDeadShots = () => {
+    if (deadCount === 0) return;
+    commit({prizeShots: shots.filter((s) => !isDeadShot(s, cuts))});
+  };
+
+  // ---------------------------------------------------------------- teclado
+
+  const selectStep = (d: -1 | 1) => {
+    if (cuts.length === 0) return;
+    const base =
+      selected ?? playing ?? (d === 1 ? -1 : cuts.length);
+    const to = clamp(base + d, 0, cuts.length - 1);
+    selectCut(to);
+  };
+
+  // Los handlers cambian en cada render (capturan props frescos); el listener
+  // se registra una sola vez y lee la version vigente a traves del ref.
+  const keysApi = {
+    selectStep,
+    split,
+    removeCut,
+    undo,
+    redo,
+    trimStart,
+    trimEnd,
+    deselect: () => onSelect(null),
+    hasSelection: selected !== null,
+  };
+  const keysRef = React.useRef(keysApi);
+  keysRef.current = keysApi;
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // No pisar los atajos de Studio (⌘Z, ⌘S, espacio...) ni robar teclas
+      // mientras se escribe en el panel de props.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+      ) {
+        return;
+      }
+      const api = keysRef.current;
+      switch (e.key) {
+        case "ArrowLeft":
+          api.selectStep(-1);
+          break;
+        case "ArrowRight":
+          api.selectStep(1);
+          break;
+        case "s":
+          api.split();
+          break;
+        case "Backspace":
+        case "Delete":
+          api.removeCut();
+          break;
+        case "z":
+          api.undo();
+          break;
+        case "Z":
+          api.redo();
+          break;
+        case "[":
+          api.trimStart(+NUDGE_SECONDS);
+          break;
+        case "]":
+          api.trimEnd(-NUDGE_SECONDS);
+          break;
+        case "Escape":
+          if (!api.hasSelection) return;
+          api.deselect();
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener("keydown", onKey, {capture: true});
+    return () =>
+      window.removeEventListener("keydown", onKey, {capture: true});
+  }, []);
+
+  // ----------------------------------------------------------------- render
+
+  const bodySeconds = bodyFrames(cuts) / REEL_FPS;
+  const canUndo = past.current.length > 0;
+  const canRedo = future.current.length > 0;
+
+  return (
+    <AbsoluteFill style={{pointerEvents: "none", fontFamily: UI.font}}>
+      <EditorStyles />
+
+      {/* Capa de seleccion: un clic en el video toma el corte que se ve. */}
+      <div
+        onClick={() => onSelect(playing)}
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "auto",
+          cursor: playing === null ? "default" : "pointer",
+        }}
+      />
+
+      {/* Barra superior */}
+      <div
+        className="rne"
+        style={{
+          position: "absolute",
+          top: 24,
+          left: 24,
+          right: 24,
+          pointerEvents: "auto",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            ...panelStyle,
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            padding: "13px 20px",
+          }}
+        >
+          <span style={{color: UI.accent}}>
+            <IcScissors size={30} />
+          </span>
+          <div style={{minWidth: 0}}>
+            <div
+              style={{
+                fontFamily: UI.font,
+                fontSize: 24,
+                fontWeight: 800,
+                letterSpacing: 1,
+                color: UI.text,
+              }}
+            >
+              EDITOR DE CORTES
+            </div>
+            <div
+              style={{fontFamily: UI.mono, fontSize: 17, color: UI.textDim}}
+            >
+              Rifa Nebraska · {cuts.length} cortes · {bodySeconds.toFixed(1)} s
+            </div>
+          </div>
+
+          <div style={{flex: 1}} />
+
+          {deadCount > 0 ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "7px 10px 7px 16px",
+                borderRadius: 999,
+                background: "rgba(245,183,78,0.12)",
+                border: `1px solid rgba(245,183,78,0.45)`,
+              }}
+            >
+              <span style={{color: UI.warn, display: "inline-flex"}}>
+                <IcWarn size={23} />
+              </span>
+              <span
+                style={{fontFamily: UI.font, fontSize: 20, fontWeight: 600, color: UI.warn}}
+              >
+                {deadCount} encuadre{deadCount > 1 ? "s" : ""} muerto
+                {deadCount > 1 ? "s" : ""}
+              </span>
+              <Btn
+                title="Eliminar los encuadres que ya no tocan ningún corte"
+                onClick={cleanDeadShots}
+                icon={<IcBroom size={22} />}
+              >
+                limpiar
+              </Btn>
+            </span>
+          ) : null}
+
+          <Btn
+            square
+            title="Deshacer (Z)"
+            onClick={undo}
+            disabled={!canUndo}
+            icon={<IcUndo size={26} />}
+          />
+          <Btn
+            square
+            title="Rehacer (⇧Z)"
+            onClick={redo}
+            disabled={!canRedo}
+            icon={<IcRedo size={26} />}
+          />
+          <Btn
+            square
+            title="Atajos de teclado"
+            active={showKeys}
+            onClick={() => setShowKeys((v) => !v)}
+            icon={<IcKeyboard size={26} />}
+          />
+        </div>
+      </div>
+
+      {/* Inspector del corte seleccionado, o pista de uso. */}
+      {cut !== null && selected !== null ? (
+        <Inspector
+          cut={cut}
+          index={selected}
+          count={cuts.length}
+          sourceT={sourceT}
+          faceCx={faceCx}
+          shot={shot}
+          shotIndex={shotIndex}
+          canSplit={canSplit}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onTrimStart={trimStart}
+          onTrimEnd={trimEnd}
+          onSplit={split}
+          onMove={move}
+          onRemove={removeCut}
+          onUndo={undo}
+          onRedo={redo}
+          onPinShot={pinShot}
+          onSetShotCx={setShotCx}
+          onCenterFace={() => setShotCx(faceCx)}
+          onShowJson={() => showInJson(["prizeShots", shotIndex])}
+          onUnpinShot={unpinShot}
+          onDeselect={() => onSelect(null)}
+        />
+      ) : (
+        <div
+          className="rne"
+          style={{
+            position: "absolute",
+            top: 122,
+            left: 24,
+            right: 24,
+            display: "flex",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <span
+            style={{
+              ...panelStyle,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "12px 24px",
+              fontFamily: UI.font,
+              fontSize: 21,
+              color: UI.textDim,
+            }}
+          >
+            <span style={{color: UI.accent, display: "inline-flex"}}>
+              <IcCursor size={24} />
+            </span>
+            Haz clic en el video o en un bloque del timeline para seleccionar
+            un corte
+          </span>
+        </div>
+      )}
+
+      {/* Leyenda de atajos, colapsable desde la barra superior. */}
+      {showKeys ? (
+        <div
+          className="rne"
+          style={{
+            position: "absolute",
+            right: 24,
+            bottom: 208,
+            pointerEvents: "auto",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{...panelStyle, padding: "16px 22px", minWidth: 460}}>
+            <div style={{...sectionLabel, marginBottom: 12}}>
+              Atajos de teclado
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "auto 1fr",
+                gap: "10px 18px",
+                alignItems: "center",
+              }}
+            >
+              {SHORTCUTS.map(([key, desc]) => (
+                <React.Fragment key={key}>
+                  <Kbd>{key}</Kbd>
+                  <span
+                    style={{fontFamily: UI.font, fontSize: 20, color: UI.textDim}}
+                  >
+                    {desc}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <Timeline
+        cuts={cuts}
+        starts={starts}
+        selected={selected}
+        playing={playing}
+        frame={frame}
+        onSelectCut={selectCut}
+        onSeek={(f) => seekTo(f)}
+        onDeselect={() => onSelect(null)}
+      />
+    </AbsoluteFill>
+  );
+};

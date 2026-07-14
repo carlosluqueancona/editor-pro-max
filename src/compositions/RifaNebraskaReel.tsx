@@ -13,6 +13,7 @@ import {Video} from "@remotion/media";
 import {z} from "zod";
 import {CLIPS, WINNERS, type Clip} from "../data/nebraska";
 import {loadGoogleFont} from "../presets/fonts";
+import {ReelEditor} from "../components/editor/ReelEditor";
 
 loadGoogleFont("Poppins", "400;600;700;800;900");
 loadGoogleFont("JetBrains Mono", "400;700");
@@ -31,7 +32,7 @@ const H = 1920;
 // es el recorte mas ancho posible, o sea la mejor calidad alcanzable.
 const SRC_W = 1024;
 const SRC_H = 576;
-const CROP_W_NORM = (SRC_H * (9 / 16)) / SRC_W; // 0.3164
+export const CROP_W_NORM = (SRC_H * (9 / 16)) / SRC_W; // 0.3164
 const HALF = CROP_W_NORM / 2;
 
 // La escala que lleva la altura del original a 1920.
@@ -110,7 +111,7 @@ export const OUTRO_FRAMES = framesOf(OUTRO_SECONDS);
 
 /** Los datos de cara van por archivo; los cortes ya solo guardan el nombre. */
 const CLIP_BY_SRC = new Map(CLIPS.map((c) => [c.src, c]));
-const clipOf = (cut: Cut): Clip => CLIP_BY_SRC.get(cut.clip) ?? CLIPS[0];
+export const clipOf = (cut: Cut): Clip => CLIP_BY_SRC.get(cut.clip) ?? CLIPS[0];
 
 export const cutFrames = (c: Cut) => framesOf(c.endSeconds - c.startSeconds);
 export const bodyFrames = (cuts: Cut[]) =>
@@ -136,7 +137,7 @@ const smoothstep = (t: number) => {
 };
 
 /** Donde esta la cara del vendedor en el instante `t` del clip original. */
-const faceAt = (clip: Clip, t: number) => {
+export const faceAt = (clip: Clip, t: number) => {
   const pts = clip.face;
   if (pts.length === 0) return 0.69;
   if (t <= pts[0].t) return pts[0].cx;
@@ -305,7 +306,10 @@ const Reframed: React.FC<{
         <Video
           src={staticFile(cut.clip)}
           trimBefore={framesOf(cut.startSeconds)}
-          trimAfter={framesOf(cut.endSeconds)}
+          // trimBefore + duracion de la Sequence, NO framesOf(endSeconds):
+          // con endSeconds el redondeo puede dejar el ultimo frame sin
+          // material y sale un cuadro negro.
+          trimAfter={framesOf(cut.startSeconds) + cutFrames(cut)}
           volume={1}
           style={{
             width: "100%",
@@ -322,485 +326,12 @@ const Reframed: React.FC<{
 
 // ------------------------------------------------------------------ editor
 //
-// Un editor de cortes dentro del propio preview. Clic en el video selecciona
-// el corte que estas viendo; clic en la tira de abajo salta a cualquier otro.
-// Cada boton reescribe los `cuts` de Root.tsx con saveDefaultProps(), que es
-// la misma via por la que Studio guarda los sliders: no hay estado paralelo
-// que se pueda desincronizar del archivo.
-//
-// Solo se monta en Studio (`getRemotionEnvironment().isStudio`), asi que no
+// El editor in-canvas vive en src/components/editor/ (ReelEditor). Solo se
+// monta en Studio (`editor && getRemotionEnvironment().isStudio`), asi que no
 // hay manera de que se cuele en un render aunque dejes el prop encendido.
 
 /** El id con el que esta registrado en Root.tsx. saveDefaultProps lo necesita. */
 export const REEL_ID = "RifaNebraskaReel";
-
-/** Ningun corte baja de aqui: mas corto y el ojo no alcanza a asentarse. */
-const MIN_CUT_SECONDS = 0.3;
-/** Lo que mueve cada clic en los botones de recorte. */
-const NUDGE_SECONDS = 0.1;
-
-const studio = () => import("@remotion/studio");
-
-/** Escribe props en Root.tsx conservando lo que haya sin guardar en el panel. */
-const persistProps = async (patch: Partial<ReelProps>) => {
-  const {saveDefaultProps} = await studio();
-  await saveDefaultProps({
-    compositionId: REEL_ID,
-    defaultProps: ({unsavedDefaultProps}) => ({...unsavedDefaultProps, ...patch}),
-  });
-};
-
-const seekTo = async (frame: number) => {
-  const {seek} = await studio();
-  seek(frame);
-};
-
-/** Abre y resalta esa entrada exacta en el panel de props de Studio. */
-const showInJson = async (path: (string | number)[]) => {
-  const {focusDefaultPropsPath} = await studio();
-  focusDefaultPropsPath({path});
-};
-
-/**
- * Studio dibuja encima del preview una capa de contornos (los recuadros azules
- * que resaltan el elemento bajo el cursor) con `pointer-events: all`. Vive
- * fuera de la composicion, asi que ningun z-index nuestro la gana: se traga
- * todos los clics y el editor parece muerto.
- *
- * Mientras el editor esta encendido le quitamos los eventos a esa capa — es lo
- * mismo que hace el boton "Hide outlines" de la barra, pero sin que tengas que
- * acordarte de darle. Se revierte solo al apagar el editor.
- */
-const useClicksReachTheCanvas = (enabled: boolean) => {
-  React.useEffect(() => {
-    if (!enabled) return;
-    const style = document.createElement("style");
-    style.textContent =
-      'svg[aria-hidden="true"] polygon {pointer-events: none !important}';
-    document.head.appendChild(style);
-    return () => style.remove();
-  }, [enabled]);
-};
-
-const EDITOR_FONT = "'JetBrains Mono', monospace";
-
-const Button: React.FC<{
-  onClick: () => void;
-  disabled?: boolean;
-  tone?: "normal" | "danger";
-  children: React.ReactNode;
-}> = ({onClick, disabled, tone = "normal", children}) => (
-  <button
-    type="button"
-    disabled={disabled}
-    onClick={(e) => {
-      e.stopPropagation();
-      onClick();
-    }}
-    style={{
-      appearance: "none",
-      border: "none",
-      borderRadius: 10,
-      padding: "14px 18px",
-      fontFamily: EDITOR_FONT,
-      fontSize: 26,
-      fontWeight: 700,
-      cursor: disabled ? "not-allowed" : "pointer",
-      opacity: disabled ? 0.35 : 1,
-      color: tone === "danger" ? "#fff" : "#0b0b0f",
-      background: tone === "danger" ? "#e0245e" : CREAM,
-    }}
-  >
-    {children}
-  </button>
-);
-
-const Row: React.FC<{label: string; children: React.ReactNode}> = ({
-  label,
-  children,
-}) => (
-  <div>
-    <span style={{color: "#a3a3a3"}}>{label}: </span>
-    {children}
-  </div>
-);
-
-const CutEditor: React.FC<{
-  cuts: Cut[];
-  shots: ReelProps["prizeShots"];
-  selected: number | null;
-  onSelect: (i: number | null) => void;
-}> = ({cuts, shots, selected, onSelect}) => {
-  const frame = useCurrentFrame();
-  const undoStack = React.useRef<Cut[][]>([]);
-
-  useClicksReachTheCanvas(true);
-
-  const starts = React.useMemo(() => cuts.map((_, i) => cutStartFrame(cuts, i)), [cuts]);
-  const resolved = React.useMemo(() => resolveShots(cuts, shots), [cuts, shots]);
-
-  /** El corte bajo el cursor de reproduccion; null en la entrada o la salida. */
-  const playing = React.useMemo(() => {
-    const i = starts.findIndex(
-      (s, k) => frame >= s && frame < s + cutFrames(cuts[k]),
-    );
-    return i === -1 ? null : i;
-  }, [starts, cuts, frame]);
-
-  const apply = React.useCallback(
-    (next: Cut[], focus: number | null) => {
-      undoStack.current.push(cuts);
-      persistProps({cuts: next});
-      onSelect(focus);
-      if (focus !== null) seekTo(cutStartFrame(next, focus));
-    },
-    [cuts, onSelect],
-  );
-
-  const undo = React.useCallback(() => {
-    const prev = undoStack.current.pop();
-    if (!prev) return;
-    persistProps({cuts: prev});
-    onSelect(null);
-  }, [onSelect]);
-
-  const cut = selected === null ? null : cuts[selected];
-
-  // Cuadro del reel en que estas parado dentro del corte seleccionado, si es
-  // que el cursor esta dentro de el. Es lo que permite partirlo por aqui.
-  const insideSelected = selected !== null && playing === selected;
-  const sourceT =
-    cut && insideSelected
-      ? cut.startSeconds + (frame - starts[selected as number]) / REEL_FPS
-      : null;
-
-  const edit = (patch: Partial<Cut>) => {
-    if (selected === null || !cut) return;
-    const next = cuts.map((c, i) => (i === selected ? {...c, ...patch} : c));
-    apply(next, selected);
-  };
-
-  const trimStart = (d: number) => {
-    if (!cut) return;
-    const startSeconds = clamp(
-      Number((cut.startSeconds + d).toFixed(2)),
-      0,
-      cut.endSeconds - MIN_CUT_SECONDS,
-    );
-    edit({startSeconds});
-  };
-
-  const trimEnd = (d: number) => {
-    if (!cut) return;
-    const endSeconds = Math.max(
-      cut.startSeconds + MIN_CUT_SECONDS,
-      Number((cut.endSeconds + d).toFixed(2)),
-    );
-    edit({endSeconds});
-  };
-
-  const remove = () => {
-    if (selected === null) return;
-    const next = cuts.filter((_, i) => i !== selected);
-    // Deja seleccionado el corte que ocupa ahora ese hueco, para poder ir
-    // borrando en cadena sin tener que volver a apuntar.
-    const focus = next.length === 0 ? null : Math.min(selected, next.length - 1);
-    apply(next, focus);
-  };
-
-  const split = () => {
-    if (selected === null || !cut || sourceT === null) return;
-    const left = {...cut, endSeconds: Number(sourceT.toFixed(2))};
-    const right = {...cut, startSeconds: Number(sourceT.toFixed(2))};
-    if (
-      left.endSeconds - left.startSeconds < MIN_CUT_SECONDS ||
-      right.endSeconds - right.startSeconds < MIN_CUT_SECONDS
-    ) {
-      return;
-    }
-    const next = [...cuts];
-    next.splice(selected, 1, left, right);
-    apply(next, selected);
-  };
-
-  const move = (d: -1 | 1) => {
-    if (selected === null) return;
-    const to = selected + d;
-    if (to < 0 || to >= cuts.length) return;
-    const next = [...cuts];
-    [next[selected], next[to]] = [next[to], next[selected]];
-    apply(next, to);
-  };
-
-  const canSplit =
-    cut !== null &&
-    sourceT !== null &&
-    sourceT - cut.startSeconds >= MIN_CUT_SECONDS &&
-    cut.endSeconds - sourceT >= MIN_CUT_SECONDS;
-
-  const totalSeconds = bodyFrames(cuts) / REEL_FPS;
-
-  // ---- el encuadre de este corte, y su entrada exacta en el JSON ----
-  //
-  // `resolveShots` devuelve los objetos tal cual salen de `prizeShots`, asi que
-  // indexOf da la posicion real en el array: es la ruta que necesita el panel
-  // de Studio para resaltar la entrada correcta.
-  const shot = selected === null ? null : resolved[selected];
-  const shotIndex = shot === null ? -1 : shots.indexOf(shot);
-
-  /**
-   * Fija el encuadre de este corte. Nace ya relleno con el clip y los segundos
-   * del corte, y con el cx donde esta la cara a mitad de la toma: si lo creas
-   * desde el panel de Studio con el boton "+" salen `start` y `end` en 0, la
-   * entrada no cubre nada y no hace absolutamente nada, sin avisar de por que.
-   *
-   * Un corte con encuadre fijo deja de perseguir la cara, que es justo lo que
-   * quita el balanceo cuando el rastreo viene nervioso.
-   */
-  const pinShot = () => {
-    if (selected === null || !cut) return;
-    const middle = (cut.startSeconds + cut.endSeconds) / 2;
-    const cx = clamp(Number(faceAt(clipOf(cut), middle).toFixed(2)), 0.16, 0.84);
-    const next = [
-      ...shots,
-      {
-        label: `${cut.clip.replace("assets/", "").replace(".mp4", "")} · corte ${selected + 1}`,
-        clip: cut.clip,
-        cx,
-        start: cut.startSeconds,
-        end: cut.endSeconds,
-      },
-    ];
-    persistProps({prizeShots: next});
-    showInJson(["prizeShots", next.length - 1]);
-  };
-
-  const nudgeShotCx = (d: number) => {
-    if (shotIndex === -1) return;
-    const next = shots.map((s, i) =>
-      i === shotIndex
-        ? {...s, cx: clamp(Number((s.cx + d).toFixed(2)), 0.16, 0.84)}
-        : s,
-    );
-    persistProps({prizeShots: next});
-  };
-
-  const unpinShot = () => {
-    if (shotIndex === -1) return;
-    persistProps({prizeShots: shots.filter((_, i) => i !== shotIndex)});
-  };
-
-  return (
-    <AbsoluteFill style={{pointerEvents: "none"}}>
-      {/* Capa de seleccion: un clic en el video toma el corte que se ve. */}
-      <div
-        onClick={() => onSelect(playing)}
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "auto",
-          cursor: playing === null ? "default" : "pointer",
-        }}
-      />
-
-      {/* Ficha del corte seleccionado. */}
-      <div
-        style={{
-          position: "absolute",
-          top: 24,
-          left: 24,
-          right: 24,
-          padding: "18px 22px",
-          borderRadius: 14,
-          background: "rgba(0,0,0,0.82)",
-          border: `2px solid ${cut ? CORAL : "rgba(255,255,255,0.18)"}`,
-          color: "#fff",
-          fontFamily: EDITOR_FONT,
-          fontSize: 28,
-          lineHeight: 1.5,
-          pointerEvents: "auto",
-        }}
-      >
-        {cut === null ? (
-          <div style={{color: "#a3a3a3"}}>
-            Clic en el video para tomar el corte que estas viendo, o en la tira
-            de abajo para ir a otro.
-          </div>
-        ) : (
-          <>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 6,
-              }}
-            >
-              <b style={{color: CORAL}}>
-                corte {(selected as number) + 1}/{cuts.length}
-              </b>
-              <span style={{color: "#7dd3fc"}}>
-                {cut.clip.replace("assets/", "")}
-              </span>
-            </div>
-            <Row label="del clip">
-              <b style={{color: "#4ade80"}}>
-                {cut.startSeconds.toFixed(2)} → {cut.endSeconds.toFixed(2)}
-              </b>
-              <span style={{color: "#a3a3a3"}}>
-                {"  "}({(cut.endSeconds - cut.startSeconds).toFixed(2)} s)
-              </span>
-            </Row>
-            <Row label="segundo del clip aqui">
-              {sourceT === null ? (
-                <span style={{color: "#a3a3a3"}}>— (el cursor esta fuera)</span>
-              ) : (
-                <b style={{color: "#fbbf24"}}>{sourceT.toFixed(2)}</b>
-              )}
-            </Row>
-            <Row label="lo encuadra">
-              {shot ? (
-                <>
-                  <span style={{color: "#f472b6"}}>
-                    {shot.label || "(sin nombre)"}
-                  </span>
-                  <span style={{color: "#a3a3a3"}}>
-                    {"  "}· prizeShots[{shotIndex}] · cx {shot.cx.toFixed(2)}
-                  </span>
-                </>
-              ) : (
-                <span style={{color: "#4ade80"}}>
-                  el rastreo de cara (se mueve solo)
-                </span>
-              )}
-            </Row>
-
-            {/* Encuadre: fijarlo mata el balanceo del rastreo en este corte. */}
-            <div
-              style={{display: "flex", flexWrap: "wrap", gap: 10, marginTop: 16}}
-            >
-              {shot ? (
-                <>
-                  <Button onClick={() => nudgeShotCx(-0.02)}>◀ encuadre</Button>
-                  <Button onClick={() => nudgeShotCx(+0.02)}>encuadre ▶</Button>
-                  <Button onClick={() => showInJson(["prizeShots", shotIndex])}>
-                    ver en el JSON
-                  </Button>
-                  <Button onClick={unpinShot} tone="danger">
-                    quitar encuadre
-                  </Button>
-                </>
-              ) : (
-                <Button onClick={pinShot}>fijar encuadre en este corte</Button>
-              )}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 10,
-                marginTop: 10,
-              }}
-            >
-              <Button onClick={() => trimStart(-NUDGE_SECONDS)}>inicio −.1</Button>
-              <Button onClick={() => trimStart(+NUDGE_SECONDS)}>inicio +.1</Button>
-              <Button onClick={() => trimEnd(-NUDGE_SECONDS)}>fin −.1</Button>
-              <Button onClick={() => trimEnd(+NUDGE_SECONDS)}>fin +.1</Button>
-              <Button onClick={split} disabled={!canSplit}>
-                partir aqui
-              </Button>
-              <Button onClick={() => move(-1)} disabled={selected === 0}>
-                ◀ mover
-              </Button>
-              <Button
-                onClick={() => move(1)}
-                disabled={selected === cuts.length - 1}
-              >
-                mover ▶
-              </Button>
-              <Button onClick={remove} tone="danger">
-                borrar corte
-              </Button>
-              <Button
-                onClick={undo}
-                disabled={undoStack.current.length === 0}
-              >
-                deshacer
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* La tira: un bloque por corte, de ancho proporcional a su duracion. */}
-      <div
-        style={{
-          position: "absolute",
-          left: 24,
-          right: 24,
-          bottom: 24,
-          pointerEvents: "auto",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 3,
-            height: 92,
-          }}
-        >
-          {cuts.map((c, i) => {
-            const isSel = i === selected;
-            const isPlaying = i === playing;
-            return (
-              <div
-                key={`${c.clip}-${c.startSeconds}-${i}`}
-                onClick={() => {
-                  onSelect(i);
-                  seekTo(starts[i]);
-                }}
-                title={`${c.clip.replace("assets/", "")}  ${c.startSeconds.toFixed(2)} → ${c.endSeconds.toFixed(2)}`}
-                style={{
-                  flexGrow: cutFrames(c),
-                  flexBasis: 0,
-                  minWidth: 10,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  background: isSel ? CORAL : "rgba(0,0,0,0.72)",
-                  color: isSel ? "#3b0d22" : "#fff",
-                  border: isPlaying
-                    ? `3px solid ${CREAM}`
-                    : "3px solid rgba(255,255,255,0.16)",
-                  fontFamily: EDITOR_FONT,
-                  fontSize: 22,
-                  fontWeight: 700,
-                }}
-              >
-                {i + 1}
-              </div>
-            );
-          })}
-        </div>
-        <div
-          style={{
-            marginTop: 10,
-            textAlign: "center",
-            fontFamily: EDITOR_FONT,
-            fontSize: 24,
-            color: CREAM,
-            textShadow: "0 2px 8px rgba(0,0,0,0.9)",
-          }}
-        >
-          {cuts.length} cortes · {totalSeconds.toFixed(1)} s de cuerpo · cada
-          cambio se guarda en Root.tsx
-        </div>
-      </div>
-    </AbsoluteFill>
-  );
-};
 
 // ----------------------------------------------------------------- escenas
 
@@ -1174,7 +705,7 @@ export const RifaNebraskaReel: React.FC<ReelProps> = ({
 
       {/* Fuera de los Sequence: asi ve el cuadro global del reel, no el del corte. */}
       {showEditor ? (
-        <CutEditor
+        <ReelEditor
           cuts={cuts}
           shots={prizeShots}
           selected={selected}

@@ -85,11 +85,11 @@ export const reelSchema = z.object({
     )
     .describe("Encuadre de los premios"),
   /**
-   * Fondo de la tarjeta de entrada. "marca": degradado animado con la paleta
-   * de Patitas (limpio, no compite con el texto). "video": la version
-   * anterior, la tienda desenfocada — se conserva para poder regresar.
+   * Fondo de las tarjetas de entrada y salida. "marca": degradado animado con
+   * la paleta de Patitas (limpio, no compite con el texto). "video": la
+   * version anterior, la tienda desenfocada — se conserva para poder regresar.
    */
-  introFondo: z.enum(["marca", "video"]).default("marca"),
+  fondoTarjetas: z.enum(["marca", "video"]).default("marca"),
   /** Segundos que tarda el encuadre en viajar del vendedor al premio. */
   rampSeconds: z.number().min(0.1).max(1.5).step(0.05),
   musicVolume: z.number().min(0).max(1).step(0.05),
@@ -352,7 +352,7 @@ export const REEL_ID = "RifaNebraskaReel";
  * flotando. Todo determinista por frame y de bajo contraste a proposito: la
  * informacion es la protagonista.
  */
-const IntroFondoMarca: React.FC = () => {
+const FondoMarca: React.FC = () => {
   const frame = useCurrentFrame();
   const t = frame / REEL_FPS;
   // Oscilaciones lentas y desfasadas para que el degradado "respire".
@@ -415,13 +415,17 @@ const IntroFondoMarca: React.FC = () => {
   );
 };
 
-/** El fondo anterior de la intro: la tienda desenfocada. Se conserva tal
- * cual para poder regresar con introFondo: "video". */
-const IntroFondoVideo: React.FC = () => (
+/** El fondo anterior de las tarjetas: la tienda desenfocada. Se conserva tal
+ * cual para poder regresar con fondoTarjetas: "video". */
+const FondoVideo: React.FC<{src: string; fromSeconds: number; frames: number}> = ({
+  src,
+  fromSeconds,
+  frames,
+}) => (
   <Video
-    src={staticFile("assets/nebraska01.mp4")}
-    trimBefore={framesOf(2)}
-    trimAfter={framesOf(2) + INTRO_FRAMES}
+    src={staticFile(src)}
+    trimBefore={framesOf(fromSeconds)}
+    trimAfter={framesOf(fromSeconds) + frames}
     muted
     style={{
       width: "100%",
@@ -435,7 +439,7 @@ const IntroFondoVideo: React.FC = () => (
 
 const Intro: React.FC<{
   musicVolume: number;
-  fondo: ReelProps["introFondo"];
+  fondo: ReelProps["fondoTarjetas"];
 }> = ({musicVolume, fondo}) => {
   const frame = useCurrentFrame();
   const k = smoothstep(frame / framesOf(0.5));
@@ -456,8 +460,12 @@ const Intro: React.FC<{
       {/* Musica de marca. El arranque de la pista; los fades van en el WAV. */}
       <Audio src={staticFile("assets/music_intro.wav")} volume={musicVolume} />
 
-      {/* La cama de la tarjeta, conmutable desde el panel (introFondo). */}
-      {fondo === "video" ? <IntroFondoVideo /> : <IntroFondoMarca />}
+      {/* La cama de la tarjeta, conmutable desde el panel (fondoTarjetas). */}
+      {fondo === "video" ? (
+        <FondoVideo src="assets/nebraska01.mp4" fromSeconds={2} frames={INTRO_FRAMES} />
+      ) : (
+        <FondoMarca />
+      )}
 
       <AbsoluteFill
         style={{
@@ -559,7 +567,10 @@ const Intro: React.FC<{
  * Tarjeta de ganadores, con el mismo diseno que la entrada.
  * Los nombres salen de lo que dicta el vendedor en nebraska02.
  */
-const Outro: React.FC<{musicVolume: number}> = ({musicVolume}) => {
+const Outro: React.FC<{
+  musicVolume: number;
+  fondo: ReelProps["fondoTarjetas"];
+}> = ({musicVolume, fondo}) => {
   const frame = useCurrentFrame();
   const k = smoothstep(frame / framesOf(0.5));
   const float = Math.sin((frame / (REEL_FPS * 3)) * Math.PI * 2) * 5;
@@ -578,19 +589,12 @@ const Outro: React.FC<{musicVolume: number}> = ({musicVolume}) => {
       {/* La misma pista, continuando donde la dejo la entrada. */}
       <Audio src={staticFile("assets/music_outro.wav")} volume={musicVolume} />
 
-      <Video
-        src={staticFile("assets/nebraska02.mp4")}
-        trimBefore={framesOf(30)}
-        trimAfter={framesOf(30) + OUTRO_FRAMES}
-        muted
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          filter: "blur(42px) brightness(0.58) saturate(1.25)",
-          transform: "scale(1.3)",
-        }}
-      />
+      {/* La misma cama que la tarjeta de entrada (fondoTarjetas). */}
+      {fondo === "video" ? (
+        <FondoVideo src="assets/nebraska02.mp4" fromSeconds={30} frames={OUTRO_FRAMES} />
+      ) : (
+        <FondoMarca />
+      )}
 
       <AbsoluteFill
         style={{
@@ -746,7 +750,7 @@ const Outro: React.FC<{musicVolume: number}> = ({musicVolume}) => {
 export const RifaNebraskaReel: React.FC<ReelProps> = ({
   cuts,
   prizeShots,
-  introFondo,
+  fondoTarjetas,
   rampSeconds,
   musicVolume,
   editor,
@@ -766,7 +770,7 @@ export const RifaNebraskaReel: React.FC<ReelProps> = ({
   return (
     <AbsoluteFill style={{backgroundColor: "#000"}}>
       <Sequence durationInFrames={INTRO_FRAMES}>
-        <Intro musicVolume={musicVolume} fondo={introFondo} />
+        <Intro musicVolume={musicVolume} fondo={fondoTarjetas} />
       </Sequence>
 
       <Sequence from={INTRO_FRAMES} durationInFrames={body}>
@@ -785,7 +789,7 @@ export const RifaNebraskaReel: React.FC<ReelProps> = ({
       </Sequence>
 
       <Sequence from={INTRO_FRAMES + body} durationInFrames={OUTRO_FRAMES}>
-        <Outro musicVolume={musicVolume} />
+        <Outro musicVolume={musicVolume} fondo={fondoTarjetas} />
       </Sequence>
 
       {/* Fuera de los Sequence: asi ve el cuadro global del reel, no el del corte. */}

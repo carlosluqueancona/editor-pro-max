@@ -84,6 +84,12 @@ export const reelSchema = z.object({
       }),
     )
     .describe("Encuadre de los premios"),
+  /**
+   * Fondo de la tarjeta de entrada. "marca": degradado animado con la paleta
+   * de Patitas (limpio, no compite con el texto). "video": la version
+   * anterior, la tienda desenfocada — se conserva para poder regresar.
+   */
+  introFondo: z.enum(["marca", "video"]).default("marca"),
   /** Segundos que tarda el encuadre en viajar del vendedor al premio. */
   rampSeconds: z.number().min(0.1).max(1.5).step(0.05),
   musicVolume: z.number().min(0).max(1).step(0.05),
@@ -340,7 +346,97 @@ export const REEL_ID = "RifaNebraskaReel";
  * video del sorteo: fondo de tienda desenfocado, logo arriba, titular a dos
  * tonos y una fila destacada en vino. Asi entrada y salida hacen juego.
  */
-const Intro: React.FC<{musicVolume: number}> = ({musicVolume}) => {
+/**
+ * Fondo de marca para la intro: cama oscura calida con el rosa y el vino de
+ * Patitas respirando muy lento detras del texto, mas un bokeh tenue que sube
+ * flotando. Todo determinista por frame y de bajo contraste a proposito: la
+ * informacion es la protagonista.
+ */
+const IntroFondoMarca: React.FC = () => {
+  const frame = useCurrentFrame();
+  const t = frame / REEL_FPS;
+  // Oscilaciones lentas y desfasadas para que el degradado "respire".
+  const sway = (period: number, phase: number) =>
+    Math.sin(((t / period) + phase) * Math.PI * 2);
+
+  // Bokeh determinista: posiciones y tamanos fijos por indice (nada de
+  // Math.random, que rompe el render reproducible).
+  const dots = Array.from({length: 9}, (_, i) => {
+    const seed = (i * 137.508) % 100; // angulo aureo: bien repartidos
+    const x = 8 + (seed * 0.84) % 84;
+    const size = 90 + ((i * 53) % 150);
+    const rise = ((t * (14 + (i % 4) * 6) + i * 210) % 2200) - 140;
+    return {
+      x: x + sway(16 + i, i * 0.35) * 2.5,
+      y: 1920 - rise,
+      size,
+      color: i % 3 === 0 ? CORAL : i % 3 === 1 ? VINO : CREAM,
+      alpha: 0.05 + (i % 3) * 0.03,
+    };
+  });
+
+  return (
+    <AbsoluteFill style={{overflow: "hidden"}}>
+      <AbsoluteFill
+        style={{
+          background: [
+            `radial-gradient(95% 58% at 50% ${45 + sway(9, 0) * 3}%, rgba(236,158,179,0.30), transparent 70%)`,
+            `radial-gradient(75% 50% at ${26 + sway(12, 0.3) * 6}% 78%, rgba(139,62,100,0.48), transparent 72%)`,
+            `radial-gradient(85% 55% at ${76 + sway(14, 0.6) * 5}% 20%, rgba(139,62,100,0.34), transparent 70%)`,
+            `linear-gradient(180deg, #251a21 0%, #1e171d 46%, #150f13 100%)`,
+          ].join(","),
+        }}
+      />
+      {dots.map((d, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            left: `${d.x}%`,
+            top: d.y,
+            width: d.size,
+            height: d.size,
+            borderRadius: "50%",
+            background: d.color,
+            opacity: d.alpha,
+            filter: "blur(34px)",
+          }}
+        />
+      ))}
+      {/* Vineta: bordes oscuros para que el bloque central de texto mande. */}
+      <AbsoluteFill
+        style={{
+          background:
+            "radial-gradient(120% 88% at 50% 50%, transparent 52%, rgba(10,6,9,0.55) 100%)," +
+            "linear-gradient(180deg, rgba(10,6,9,0.5) 0%, transparent 18%, transparent 82%, rgba(10,6,9,0.55) 100%)",
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+/** El fondo anterior de la intro: la tienda desenfocada. Se conserva tal
+ * cual para poder regresar con introFondo: "video". */
+const IntroFondoVideo: React.FC = () => (
+  <Video
+    src={staticFile("assets/nebraska01.mp4")}
+    trimBefore={framesOf(2)}
+    trimAfter={framesOf(2) + INTRO_FRAMES}
+    muted
+    style={{
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      filter: "blur(42px) brightness(0.58) saturate(1.25)",
+      transform: "scale(1.3)",
+    }}
+  />
+);
+
+const Intro: React.FC<{
+  musicVolume: number;
+  fondo: ReelProps["introFondo"];
+}> = ({musicVolume, fondo}) => {
   const frame = useCurrentFrame();
   const k = smoothstep(frame / framesOf(0.5));
   const float = Math.sin((frame / (REEL_FPS * 3)) * Math.PI * 2) * 5;
@@ -360,20 +456,8 @@ const Intro: React.FC<{musicVolume: number}> = ({musicVolume}) => {
       {/* Musica de marca. El arranque de la pista; los fades van en el WAV. */}
       <Audio src={staticFile("assets/music_intro.wav")} volume={musicVolume} />
 
-      {/* Misma cama que la tarjeta final: la tienda, desenfocada y oscura. */}
-      <Video
-        src={staticFile("assets/nebraska01.mp4")}
-        trimBefore={framesOf(2)}
-        trimAfter={framesOf(2) + INTRO_FRAMES}
-        muted
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          filter: "blur(42px) brightness(0.58) saturate(1.25)",
-          transform: "scale(1.3)",
-        }}
-      />
+      {/* La cama de la tarjeta, conmutable desde el panel (introFondo). */}
+      {fondo === "video" ? <IntroFondoVideo /> : <IntroFondoMarca />}
 
       <AbsoluteFill
         style={{
@@ -662,6 +746,7 @@ const Outro: React.FC<{musicVolume: number}> = ({musicVolume}) => {
 export const RifaNebraskaReel: React.FC<ReelProps> = ({
   cuts,
   prizeShots,
+  introFondo,
   rampSeconds,
   musicVolume,
   editor,
@@ -681,7 +766,7 @@ export const RifaNebraskaReel: React.FC<ReelProps> = ({
   return (
     <AbsoluteFill style={{backgroundColor: "#000"}}>
       <Sequence durationInFrames={INTRO_FRAMES}>
-        <Intro musicVolume={musicVolume} />
+        <Intro musicVolume={musicVolume} fondo={introFondo} />
       </Sequence>
 
       <Sequence from={INTRO_FRAMES} durationInFrames={body}>
